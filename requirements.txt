@@ -1,3 +1,7 @@
 streamlit
-groq
-ddgs
+pdfplumber
+python-docx
+pandas
+openpyxl
+SpeechRecognition
+pydub
