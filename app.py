@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
+from duckduckgo_search import DDGS
 import pdfplumber
 import docx
 import pandas as pd
@@ -8,7 +9,7 @@ from pydub import AudioSegment
 import io
 
 # ===== KONFIGURASI AWAL =====
-st.set_page_config(page_title="Foxsay", layout="wide")
+st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="wide")
 
 st.title("🦊 Foxsay")
 st.caption("Asisten Gen Z siap bantu lo!")
@@ -32,18 +33,37 @@ Gunakan ekspresi-ekspresi ini dalam setiap jawaban:
 TAPI tetap informatif dan sesuai fakta. Ekspresi hanya sebagai bumbu.
 """
 
-# ===== API KEY =====
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# ===== API KEY (ambil dari Streamlit Secrets) =====
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
+client = Groq(api_key=GROQ_API_KEY)
 
 # ===== MEMORY PERCAKAPAN =====
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ===== FUNGSI PANGGIL AI =====
+# ===== FUNGSI PANGGIL GROQ =====
 def panggil_AI(prompt):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content(GAYA_GEN_Z + "\n\n" + prompt)
-    return response.text
+    completion = client.chat.completions.create(
+        model="llama3-70b-8192",
+        messages=[
+            {"role": "system", "content": GAYA_GEN_Z},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.7,
+        max_tokens=1024
+    )
+    return completion.choices[0].message.content
+
+# ===== FUNGSI SEARCH INTERNET =====
+def cari_internet(query):
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=3))
+            if not results:
+                return "Nggak ada hasil, ges."
+            return "\n\n".join([f"{r['title']}: {r['body']}" for r in results])
+    except Exception as e:
+        return f"Error: {e}"
 
 # ===== SIDEBAR MENU =====
 menu = st.sidebar.radio(
@@ -52,7 +72,7 @@ menu = st.sidebar.radio(
 )
 
 # ============================================================
-# ===== FITUR 1: CHAT + MEMORY =====
+# ===== FITUR 1: CHAT + MEMORY + SEARCH =====
 # ============================================================
 if menu == "💬 Chat":
     # Tampilkan history chat
@@ -67,15 +87,23 @@ if menu == "💬 Chat":
         with st.chat_message("user"):
             st.write(prompt)
         
-        # Ambil history (5 percakapan terakhir)
-        history = st.session_state.messages[-6:-1]
-        konteks = "\n".join([f"{m['role']}: {m['content']}" for m in history])
-        
-        # Panggil AI
-        with st.chat_message("assistant"):
-            with st.spinner("Santuy ges, lagi mikir..."):
-                jawaban = panggil_AI(f"Percakapan sebelumnya:\n{konteks}\n\nPertanyaan baru: {prompt}")
-                st.write(jawaban)
+        # Cek apakah perlu cari di internet
+        if "cari" in prompt.lower() or "internet" in prompt.lower() or "info" in prompt.lower():
+            with st.chat_message("assistant"):
+                with st.spinner("Santuy ges, lagi cari di internet..."):
+                    hasil_internet = cari_internet(prompt)
+                    jawaban = panggil_AI(f"Pertanyaan: {prompt}\n\nHasil pencarian internet:\n{hasil_internet}")
+                    st.write(jawaban)
+        else:
+            # Ambil history (5 percakapan terakhir)
+            history = st.session_state.messages[-6:-1]
+            konteks = "\n".join([f"{m['role']}: {m['content']}" for m in history])
+            
+            # Panggil AI
+            with st.chat_message("assistant"):
+                with st.spinner("Santuy ges, lagi mikir..."):
+                    jawaban = panggil_AI(f"Percakapan sebelumnya:\n{konteks}\n\nPertanyaan baru: {prompt}")
+                    st.write(jawaban)
         
         # Simpan jawaban AI
         st.session_state.messages.append({"role": "assistant", "content": jawaban})
@@ -137,7 +165,6 @@ elif menu == "📊 Excel":
         # Tombol analisis
         if st.button("🔍 Analisis Yuk, Ges!"):
             with st.spinner("Beh! Lagi ngitung..."):
-                # Ambil 5 baris pertama + info kolom
                 info = f"Kolom: {', '.join(df.columns)}\n\n5 data pertama:\n{df.head().to_string()}"
                 analisis = panggil_AI(f"Analisis data Excel ini secara singkat (insight + rekomendasi):\n\n{info}")
                 st.success("### Analisis:")
@@ -153,29 +180,23 @@ elif menu == "🎤 Voice Note":
     audio = st.audio_input("🎙️ Pencet terus sambil bicara, ya!")
     
     if audio is not None:
-        # Putar ulang hasil rekaman
         st.audio(audio)
         
         with st.spinner("Hmmm... lagi dengerin suara lo..."):
             try:
-                # Konversi audio ke WAV
                 audio_bytes = audio.getvalue()
                 audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
                 
-                # Simpan sementara
                 with open("temp_audio.wav", "wb") as f:
                     audio_segment.export(f, format="wav")
                 
-                # Ubah ke teks pake Google Speech
                 recognizer = sr.Recognizer()
                 with sr.AudioFile("temp_audio.wav") as source:
                     audio_data = recognizer.record(source)
                     teks = recognizer.recognize_google(audio_data, language="id-ID")
                 
-                # Tampilkan hasil transkripsi
                 st.info(f"📝 Yang lo omongin: *{teks}*")
                 
-                # Kirim ke AI
                 with st.spinner("Vhom! Lagi nyusun jawaban..."):
                     jawaban = panggil_AI(f"User nanya: {teks}. Jawab dengan gaya Foxsay yang ekspresif!")
                     st.success("### Jawaban Foxsay:")
