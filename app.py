@@ -202,16 +202,51 @@ if st.session_state.nama_file:
             st.rerun()
 
 st.write("Tanya apa aja ke Foxsay:")
-with st.form("tanya_form", clear_on_submit=True):
-    col_plus, col_mic, col_input, col_submit = st.columns([1, 1, 4, 1.3])
-    with col_plus:
-        attach_clicked = st.form_submit_button("➕")
-    with col_mic:
-        mic_clicked = st.form_submit_button("🎤")
-    with col_input:
-        pertanyaan = st.text_input("Tanya apa aja ke Foxsay:", label_visibility="collapsed")
-    with col_submit:
-        submitted = st.form_submit_button("Tanya")
+kotak_utama = st.container(border=True)
+with kotak_utama:
+    with st.form("tanya_form", clear_on_submit=True):
+        col_plus, col_mic, col_input, col_submit = st.columns([1, 1, 4, 1.3])
+        with col_plus:
+            attach_clicked = st.form_submit_button("➕")
+        with col_mic:
+            mic_clicked = st.form_submit_button("🎤")
+        with col_input:
+            pertanyaan = st.text_input("Tanya apa aja ke Foxsay:", label_visibility="collapsed")
+        with col_submit:
+            submitted = st.form_submit_button("Tanya")
+
+    if st.session_state.show_mic:
+        audio_value = st.audio_input("Rekam pesan suara kamu", label_visibility="collapsed")
+        if audio_value is not None:
+            with st.spinner("🦊 Foxsay lagi dengerin..."):
+                try:
+                    transkrip = client.audio.transcriptions.create(
+                        file=("voice.wav", audio_value.read()),
+                        model="whisper-large-v3",
+                        language="id"
+                    )
+                    st.session_state.teks_transkrip = transkrip.text
+                except Exception as e:
+                    st.error(f"Gagal transkrip suara: {e}")
+
+        if st.session_state.teks_transkrip:
+            st.info(f"📝 Hasil transkrip: \"{st.session_state.teks_transkrip}\"")
+            col_x, col_y = st.columns(2)
+            with col_x:
+                if st.button("Kirim ke Foxsay"):
+                    pertanyaan_vn = st.session_state.teks_transkrip
+                    st.session_state.teks_transkrip = ""
+                    st.session_state.show_mic = False
+                    with st.spinner("🦊 Foxsay lagi mikir..."):
+                        jawaban = agent(pertanyaan_vn, st.session_state.isi_file)
+                    st.session_state.history.append(("user", f"🎤 {pertanyaan_vn}"))
+                    st.session_state.history.append(("ai", jawaban))
+                    st.rerun()
+            with col_y:
+                if st.button("Batal"):
+                    st.session_state.teks_transkrip = ""
+                    st.session_state.show_mic = False
+                    st.rerun()
 
 if attach_clicked:
     st.session_state.show_uploader = not st.session_state.show_uploader
@@ -220,39 +255,6 @@ if attach_clicked:
 if mic_clicked:
     st.session_state.show_mic = not st.session_state.show_mic
     st.rerun()
-
-if st.session_state.show_mic:
-    audio_value = st.audio_input("Rekam pesan suara kamu")
-    if audio_value is not None:
-        with st.spinner("🦊 Foxsay lagi dengerin..."):
-            try:
-                transkrip = client.audio.transcriptions.create(
-                    file=("voice.wav", audio_value.read()),
-                    model="whisper-large-v3",
-                    language="id"
-                )
-                st.session_state.teks_transkrip = transkrip.text
-            except Exception as e:
-                st.error(f"Gagal transkrip suara: {e}")
-
-    if st.session_state.teks_transkrip:
-        st.info(f"📝 Hasil transkrip: \"{st.session_state.teks_transkrip}\"")
-        col_x, col_y = st.columns(2)
-        with col_x:
-            if st.button("Kirim ke Foxsay"):
-                pertanyaan_vn = st.session_state.teks_transkrip
-                st.session_state.teks_transkrip = ""
-                st.session_state.show_mic = False
-                with st.spinner("🦊 Foxsay lagi mikir..."):
-                    jawaban = agent(pertanyaan_vn, st.session_state.isi_file)
-                st.session_state.history.append(("user", f"🎤 {pertanyaan_vn}"))
-                st.session_state.history.append(("ai", jawaban))
-                st.rerun()
-        with col_y:
-            if st.button("Batal"):
-                st.session_state.teks_transkrip = ""
-                st.session_state.show_mic = False
-                st.rerun()
 
 if submitted and pertanyaan:
     with st.spinner("🦊 Foxsay lagi mikir..."):
