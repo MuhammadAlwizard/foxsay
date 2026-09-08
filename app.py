@@ -31,6 +31,15 @@ st.markdown("""
         margin: 8px 0;
         color: white;
     }
+    .file-chip {
+        background-color: #2b313e;
+        padding: 6px 12px;
+        border-radius: 10px;
+        display: inline-block;
+        margin-bottom: 8px;
+        font-size: 0.85em;
+        color: #FF6B35;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,6 +55,8 @@ if "isi_file" not in st.session_state:
     st.session_state.isi_file = ""
 if "nama_file" not in st.session_state:
     st.session_state.nama_file = ""
+if "show_uploader" not in st.session_state:
+    st.session_state.show_uploader = False
 
 SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
@@ -116,11 +127,21 @@ Jawab dengan gaya di atas."""
     )
     return response.choices[0].message.content
 
-st.subheader("📄 Upload file (opsional)")
-uploaded_file = st.file_uploader("Upload PDF atau Word buat dirangkum/ditanya isinya", type=["pdf", "docx"])
+# Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
 
-if uploaded_file is not None:
-    if uploaded_file.name != st.session_state.nama_file:
+# Baris tombol "+" attach dan indikator file aktif
+col_plus, col_info = st.columns([1, 6])
+with col_plus:
+    if st.button("➕", help="Lampirkan file (PDF/Word)"):
+        st.session_state.show_uploader = not st.session_state.show_uploader
+
+with col_info:
+    if st.session_state.nama_file:
+        st.markdown(f'<span class="file-chip">📎 {st.session_state.nama_file}</span>', unsafe_allow_html=True)
+
+if st.session_state.show_uploader:
+    uploaded_file = st.file_uploader("Upload PDF atau Word", type=["pdf", "docx"], label_visibility="collapsed")
+    if uploaded_file is not None and uploaded_file.name != st.session_state.nama_file:
         with st.spinner("🦊 Foxsay lagi baca file..."):
             try:
                 if uploaded_file.name.endswith(".pdf"):
@@ -131,21 +152,22 @@ if uploaded_file is not None:
                     isi = ""
                 st.session_state.isi_file = isi
                 st.session_state.nama_file = uploaded_file.name
-                st.success(f"File '{uploaded_file.name}' berhasil dibaca! ({len(isi)} karakter)")
+                st.session_state.show_uploader = False
+                st.success(f"File '{uploaded_file.name}' berhasil dibaca!")
+                st.rerun()
             except Exception as e:
                 st.error(f"Gagal baca file: {e}")
 
 if st.session_state.nama_file:
-    st.info(f"📎 File aktif: {st.session_state.nama_file} — pertanyaan kamu dijawab berdasarkan isi file ini.")
-    col1, col2 = st.columns(2)
-    with col1:
+    col_a, col_b = st.columns(2)
+    with col_a:
         if st.button("Rangkum file ini"):
             with st.spinner("🦊 Foxsay lagi ngerangkum..."):
                 jawaban = agent("Tolong rangkum isi file ini secara singkat dan jelas.", st.session_state.isi_file)
             st.session_state.history.append(("user", f"[Minta rangkuman: {st.session_state.nama_file}]"))
             st.session_state.history.append(("ai", jawaban))
             st.rerun()
-    with col2:
+    with col_b:
         if st.button("Hapus file"):
             st.session_state.isi_file = ""
             st.session_state.nama_file = ""
