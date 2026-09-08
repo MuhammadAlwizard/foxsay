@@ -3,6 +3,7 @@ from groq import Groq
 from ddgs import DDGS
 import pypdf
 import docx
+import pandas as pd
 
 st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="centered")
 
@@ -57,6 +58,8 @@ if "nama_file" not in st.session_state:
     st.session_state.nama_file = ""
 if "show_uploader" not in st.session_state:
     st.session_state.show_uploader = False
+if "df_aktif" not in st.session_state:
+    st.session_state.df_aktif = None
 
 SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
@@ -93,6 +96,14 @@ def baca_pdf(file):
 def baca_docx(file):
     doc = docx.Document(file)
     return "\n".join([para.text for para in doc.paragraphs])
+
+def baca_excel(file):
+    df = pd.read_excel(file)
+    return df
+
+def baca_csv(file):
+    df = pd.read_csv(file)
+    return df
 
 def cari_internet(query):
     try:
@@ -133,14 +144,23 @@ if st.session_state.nama_file:
     st.markdown(f'<span class="file-chip">📎 {st.session_state.nama_file}</span>', unsafe_allow_html=True)
 
 if st.session_state.show_uploader:
-    uploaded_file = st.file_uploader("Upload PDF atau Word", type=["pdf", "docx"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("Upload PDF, Word, Excel, atau CSV", type=["pdf", "docx", "xlsx", "csv"], label_visibility="collapsed")
     if uploaded_file is not None and uploaded_file.name != st.session_state.nama_file:
         with st.spinner("🦊 Foxsay lagi baca file..."):
             try:
+                st.session_state.df_aktif = None
                 if uploaded_file.name.endswith(".pdf"):
                     isi = baca_pdf(uploaded_file)
                 elif uploaded_file.name.endswith(".docx"):
                     isi = baca_docx(uploaded_file)
+                elif uploaded_file.name.endswith(".xlsx"):
+                    df = baca_excel(uploaded_file)
+                    st.session_state.df_aktif = df
+                    isi = df.to_string()
+                elif uploaded_file.name.endswith(".csv"):
+                    df = baca_csv(uploaded_file)
+                    st.session_state.df_aktif = df
+                    isi = df.to_string()
                 else:
                     isi = ""
                 st.session_state.isi_file = isi
@@ -151,12 +171,17 @@ if st.session_state.show_uploader:
             except Exception as e:
                 st.error(f"Gagal baca file: {e}")
 
+if st.session_state.df_aktif is not None:
+    st.dataframe(st.session_state.df_aktif, use_container_width=True)
+
 if st.session_state.nama_file:
+    label_tombol = "Analisis data ini" if st.session_state.df_aktif is not None else "Rangkum file ini"
+    pesan_default = "Tolong analisis data ini: kasih insight menarik, pattern, atau hal penting yang perlu diperhatikan." if st.session_state.df_aktif is not None else "Tolong rangkum isi file ini secara singkat dan jelas."
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("Rangkum file ini"):
-            with st.spinner("🦊 Foxsay lagi ngerangkum..."):
-                jawaban = agent("Tolong rangkum isi file ini secara singkat dan jelas.", st.session_state.isi_file)
+        if st.button(label_tombol):
+            with st.spinner("🦊 Foxsay lagi mikir..."):
+                jawaban = agent(pesan_default, st.session_state.isi_file)
             st.session_state.history.append(("user", f"[Minta rangkuman: {st.session_state.nama_file}]"))
             st.session_state.history.append(("ai", jawaban))
             st.rerun()
@@ -164,6 +189,7 @@ if st.session_state.nama_file:
         if st.button("Hapus file"):
             st.session_state.isi_file = ""
             st.session_state.nama_file = ""
+            st.session_state.df_aktif = None
             st.rerun()
 
 st.write("Tanya apa aja ke Foxsay:")
