@@ -1,6 +1,8 @@
 import streamlit as st
 from groq import Groq
 from ddgs import DDGS
+import pypdf
+import docx
 
 st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="centered")
 
@@ -33,27 +35,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("🦊 Foxsay")
-st.caption("AI agent yang bisa jawab pertanyaan pakai info terkini dari internet")
+st.caption("AI agent yang bisa jawab pertanyaan, search internet, dan baca file")
 
 api_key = st.secrets["GROQ_API_KEY"]
 client = Groq(api_key=api_key)
 
 if "history" not in st.session_state:
     st.session_state.history = []
+if "isi_file" not in st.session_state:
+    st.session_state.isi_file = ""
+if "nama_file" not in st.session_state:
+    st.session_state.nama_file = ""
 
-def cari_internet(query):
-    try:
-        hasil = DDGS().text(query, max_results=5)
-        teks_hasil = ""
-        for item in hasil:
-            teks_hasil += f"- {item['title']}: {item['body']}\n"
-        return teks_hasil if teks_hasil else "(tidak ada hasil pencarian)"
-    except Exception:
-        return "(pencarian gagal, jawab pakai pengetahuan umum saja)"
-
-def agent(pertanyaan):
-    hasil_search = cari_internet(pertanyaan)
-    prompt = f"""Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
+SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
 
 Gaya bicaramu santai dan hidup, pakai kosakata khas berikut (bukan kata-kata umum
@@ -76,10 +70,41 @@ untuk itu, nggak usah dipaksain pakai ALIAS sama sekali.
 
 Kamu paham berbagai bahasa daerah Indonesia (Jawa, Sunda, Betawi, dll) kalau user
 menggunakannya dalam pertanyaan, tapi kamu tetap menjawab pakai Bahasa Indonesia gaya
-santai di atas, bukan ikut logat daerah.
+santai di atas, bukan ikut logat daerah."""
 
-Info dari internet (kalau ada):
-{hasil_search}
+def baca_pdf(file):
+    reader = pypdf.PdfReader(file)
+    teks = ""
+    for page in reader.pages:
+        teks += page.extract_text() + "\n"
+    return teks
+
+def baca_docx(file):
+    doc = docx.Document(file)
+    return "\n".join([para.text for para in doc.paragraphs])
+
+def cari_internet(query):
+    try:
+        hasil = DDGS().text(query, max_results=5)
+        teks_hasil = ""
+        for item in hasil:
+            teks_hasil += f"- {item['title']}: {item['body']}\n"
+        return teks_hasil if teks_hasil else "(tidak ada hasil pencarian)"
+    except Exception:
+        return "(pencarian gagal, jawab pakai pengetahuan umum saja)"
+
+def agent(pertanyaan, konteks_file=""):
+    if konteks_file:
+        sumber_info = f"""Isi file yang diupload user ({st.session_state.nama_file}):
+{konteks_file[:8000]}"""
+    else:
+        hasil_search = cari_internet(pertanyaan)
+        sumber_info = f"""Info dari internet (kalau ada):
+{hasil_search}"""
+
+    prompt = f"""{SYSTEM_STYLE}
+
+{sumber_info}
 
 Pertanyaan: {pertanyaan}
 
@@ -91,13 +116,48 @@ Jawab dengan gaya di atas."""
     )
     return response.choices[0].message.content
 
+st.subheader("📄 Upload file (opsional)")
+uploaded_file = st.file_uploader("Upload PDF atau Word buat dirangkum/ditanya isinya", type=["pdf", "docx"])
+
+if uploaded_file is not None:
+    if uploaded_file.name != st.session_state.nama_file:
+        with st.spinner("🦊 Foxsay lagi baca file..."):
+            try:
+                if uploaded_file.name.endswith(".pdf"):
+                    isi = baca_pdf(uploaded_file)
+                elif uploaded_file.name.endswith(".docx"):
+                    isi = baca_docx(uploaded_file)
+                else:
+                    isi = ""
+                st.session_state.isi_file = isi
+                st.session_state.nama_file = uploaded_file.name
+                st.success(f"File '{uploaded_file.name}' berhasil dibaca! ({len(isi)} karakter)")
+            except Exception as e:
+                st.error(f"Gagal baca file: {e}")
+
+if st.session_state.nama_file:
+    st.info(f"📎 File aktif: {st.session_state.nama_file} — pertanyaan kamu dijawab berdasarkan isi file ini.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Rangkum file ini"):
+            with st.spinner("🦊 Foxsay lagi ngerangkum..."):
+                jawaban = agent("Tolong rangkum isi file ini secara singkat dan jelas.", st.session_state.isi_file)
+            st.session_state.history.append(("user", f"[Minta rangkuman: {st.session_state.nama_file}]"))
+            st.session_state.history.append(("ai", jawaban))
+            st.rerun()
+    with col2:
+        if st.button("Hapus file"):
+            st.session_state.isi_file = ""
+            st.session_state.nama_file = ""
+            st.rerun()
+
 with st.form("tanya_form", clear_on_submit=True):
     pertanyaan = st.text_input("Tanya apa aja ke Foxsay:")
     submitted = st.form_submit_button("Tanya")
 
 if submitted and pertanyaan:
     with st.spinner("🦊 Foxsay lagi mikir..."):
-        jawaban = agent(pertanyaan)
+        jawaban = agent(pertanyaan, st.session_state.isi_file)
     st.session_state.history.append(("user", pertanyaan))
     st.session_state.history.append(("ai", jawaban))
 
