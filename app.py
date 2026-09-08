@@ -129,15 +129,8 @@ Jawab dengan gaya di atas."""
 
 # Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
 
-# Baris tombol "+" attach dan indikator file aktif
-col_plus, col_info = st.columns([1, 6])
-with col_plus:
-    if st.button("➕", help="Lampirkan file (PDF/Word)"):
-        st.session_state.show_uploader = not st.session_state.show_uploader
-
-with col_info:
-    if st.session_state.nama_file:
-        st.markdown(f'<span class="file-chip">📎 {st.session_state.nama_file}</span>', unsafe_allow_html=True)
+if st.session_state.nama_file:
+    st.markdown(f'<span class="file-chip">📎 {st.session_state.nama_file}</span>', unsafe_allow_html=True)
 
 if st.session_state.show_uploader:
     uploaded_file = st.file_uploader("Upload PDF atau Word", type=["pdf", "docx"], label_visibility="collapsed")
@@ -173,9 +166,19 @@ if st.session_state.nama_file:
             st.session_state.nama_file = ""
             st.rerun()
 
+st.write("Tanya apa aja ke Foxsay:")
 with st.form("tanya_form", clear_on_submit=True):
-    pertanyaan = st.text_input("Tanya apa aja ke Foxsay:")
-    submitted = st.form_submit_button("Tanya")
+    col_plus, col_input, col_submit = st.columns([1, 5, 1.3])
+    with col_plus:
+        attach_clicked = st.form_submit_button("➕")
+    with col_input:
+        pertanyaan = st.text_input("Tanya apa aja ke Foxsay:", label_visibility="collapsed")
+    with col_submit:
+        submitted = st.form_submit_button("Tanya")
+
+if attach_clicked:
+    st.session_state.show_uploader = not st.session_state.show_uploader
+    st.rerun()
 
 if submitted and pertanyaan:
     with st.spinner("🦊 Foxsay lagi mikir..."):
