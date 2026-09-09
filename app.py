@@ -212,6 +212,128 @@ def buat_ringkasan_statistik(df):
 
     return "\n".join(bagian)
 
+def buat_analisis_terstruktur(df):
+    """Buat analisis bisnis terukur agar AI membedakan fakta dan dugaan."""
+    hasil = {
+        "Fakta dari data": [],
+        "Interpretasi": [],
+        "Hipotesis": [],
+        "Rekomendasi": [],
+    }
+    if df is None or df.empty:
+        hasil["Fakta dari data"].append("Data kosong; analisis lanjutan belum dapat dilakukan.")
+        return hasil
+
+    numerik = df.select_dtypes(include="number")
+    kategori = df.select_dtypes(include=["object", "category", "bool"])
+
+    missing = df.isna().sum()
+    missing = missing[missing > 0]
+    if missing.empty:
+        hasil["Fakta dari data"].append("Tidak ditemukan nilai yang hilang.")
+    else:
+        for kolom, jumlah in missing.items():
+            persentase = jumlah / len(df) * 100
+            hasil["Fakta dari data"].append(
+                f"Kolom {kolom} memiliki {int(jumlah)} nilai hilang ({persentase:.2f}% dari baris)."
+            )
+        hasil["Rekomendasi"].append(
+            "Tentukan strategi untuk nilai hilang sebelum membuat model prediksi; jangan langsung menganggapnya acak."
+        )
+
+    # Nilai negatif hanya ditandai sebagai anomali. Maknanya tetap harus dikonfirmasi
+    # berdasarkan definisi kolom, karena beberapa metrik seperti profit memang boleh negatif.
+    anomali_negatif = []
+    for kolom in numerik.columns:
+        seri = pd.to_numeric(df[kolom], errors="coerce").dropna()
+        negatif = seri[seri < 0]
+        if not negatif.empty:
+            anomali_negatif.append((kolom, len(negatif), negatif.min()))
+    for kolom, jumlah, minimum in anomali_negatif:
+        hasil["Fakta dari data"].append(
+            f"Kolom {kolom} memiliki {jumlah} nilai negatif; nilai minimum {minimum:.4f}."
+        )
+        hasil["Hipotesis"].append(
+            f"Nilai negatif pada {kolom} mungkin merupakan error input, tetapi perlu dikonfirmasi dari definisi data."
+        )
+        hasil["Rekomendasi"].append(
+            f"Validasi nilai negatif pada {kolom} sebelum analisis lanjutan; jangan menghapusnya tanpa aturan bisnis."
+        )
+
+    # IQR digunakan untuk menemukan kandidat outlier, bukan untuk menyatakan bahwa
+    # nilai tersebut pasti salah.
+    kandidat_outlier = []
+    for kolom in numerik.columns:
+        seri = pd.to_numeric(df[kolom], errors="coerce").dropna()
+        if len(seri) < 4:
+            continue
+        kuartil_1 = seri.quantile(0.25)
+        kuartil_3 = seri.quantile(0.75)
+        rentang_iqr = kuartil_3 - kuartil_1
+        if rentang_iqr == 0:
+            continue
+        batas_bawah = kuartil_1 - 1.5 * rentang_iqr
+        batas_atas = kuartil_3 + 1.5 * rentang_iqr
+        jumlah = int(((seri < batas_bawah) | (seri > batas_atas)).sum())
+        if jumlah:
+            kandidat_outlier.append((jumlah, kolom, batas_bawah, batas_atas))
+    for jumlah, kolom, batas_bawah, batas_atas in sorted(kandidat_outlier, reverse=True)[:5]:
+        hasil["Fakta dari data"].append(
+            f"Kolom {kolom} memiliki {jumlah} kandidat outlier menurut aturan IQR "
+            f"(batas {batas_bawah:.4f} sampai {batas_atas:.4f})."
+        )
+        hasil["Interpretasi"].append(
+            f"Kandidat outlier pada {kolom} perlu diperiksa; outlier belum tentu merupakan kesalahan data."
+        )
+        hasil["Rekomendasi"].append(
+            f"Periksa baris sumber pada {kolom} dan bandingkan dengan konteks bisnis sebelum melakukan imputasi atau penghapusan."
+        )
+
+    # Cari perbedaan rata-rata antar kelompok kategorikal dengan jumlah sampel yang
+    # cukup agar rekomendasi tidak hanya berdasarkan pengamatan visual.
+    perbandingan = []
+    for kolom_kategori in kategori.columns:
+        jumlah_unik = kategori[kolom_kategori].nunique(dropna=False)
+        if not 2 <= jumlah_unik <= 10:
+            continue
+        for kolom_nilai in numerik.columns:
+            pasangan = df[[kolom_kategori, kolom_nilai]].copy()
+            pasangan[kolom_nilai] = pd.to_numeric(pasangan[kolom_nilai], errors="coerce")
+            grup = pasangan.groupby(kolom_kategori, dropna=False)[kolom_nilai].agg(["mean", "count"]).dropna(subset=["mean"])
+            grup = grup[grup["count"] >= 2]
+            if len(grup) < 2:
+                continue
+            tertinggi = grup["mean"].idxmax()
+            terendah = grup["mean"].idxmin()
+            nilai_tinggi = grup.loc[tertinggi, "mean"]
+            nilai_terendah = grup.loc[terendah, "mean"]
+            selisih = nilai_tinggi - nilai_terendah
+            pembagi = max(abs(grup["mean"].mean()), 1e-9)
+            perbandingan.append((abs(selisih) / pembagi, kolom_kategori, kolom_nilai, tertinggi, terendah, nilai_tinggi, nilai_terendah))
+
+    for _, kolom_kategori, kolom_nilai, tertinggi, terendah, nilai_tinggi, nilai_terendah in sorted(perbandingan, reverse=True)[:5]:
+        nama_tinggi = "(kosong)" if pd.isna(tertinggi) else str(tertinggi)
+        nama_terendah = "(kosong)" if pd.isna(terendah) else str(terendah)
+        hasil["Fakta dari data"].append(
+            f"Rata-rata {kolom_nilai} tertinggi ada pada {kolom_kategori}={nama_tinggi} "
+            f"({nilai_tinggi:.4f}); terendah pada {kolom_kategori}={nama_terendah} ({nilai_terendah:.4f})."
+        )
+        hasil["Interpretasi"].append(
+            f"Perbedaan rata-rata {kolom_nilai} antar kelompok {kolom_kategori} terlihat pada data ini, "
+            "tetapi belum membuktikan penyebabnya."
+        )
+        hasil["Hipotesis"].append(
+            f"Perbedaan {kolom_nilai} mungkin berkaitan dengan karakteristik kelompok {kolom_kategori}; "
+            "perlu diuji dengan variabel tambahan."
+        )
+        hasil["Rekomendasi"].append(
+            f"Bandingkan ukuran sampel dan karakteristik tiap kelompok {kolom_kategori} sebelum membuat strategi khusus."
+        )
+
+    if not hasil["Interpretasi"] and numerik.empty:
+        hasil["Interpretasi"].append("Belum ada kolom numerik untuk membuat perbandingan statistik.")
+    return hasil
+
 def buat_insight_data(df, kolom_tanggal, kolom_numerik, kolom_kategori):
     """Buat insight singkat berbasis statistik dasar, tanpa memanggil AI."""
     insight = [f"Data berisi {len(df):,} baris dan {len(df.columns)} kolom.".replace(",", ".")]
@@ -286,6 +408,14 @@ def tampilkan_analisis_grafik(df):
         kolom_tampil = ["Kolom", "Jumlah", "Rata-rata", "Std", "Minimum", "Median", "Maksimum"]
         st.dataframe(statistik[kolom_tampil].round(4), hide_index=True, use_container_width=True)
 
+    analisis_terstruktur = buat_analisis_terstruktur(df)
+    with st.expander("Analisis bisnis terstruktur", expanded=True):
+        for judul, daftar in analisis_terstruktur.items():
+            if daftar:
+                st.markdown(f"**{judul}**")
+                for item in daftar:
+                    st.markdown(f"- {item}")
+
     if kolom_tanggal and kolom_numerik:
         try:
             tren = df[[kolom_tanggal, kolom_numerik[0]]].copy()
@@ -347,9 +477,18 @@ def agent(pertanyaan, konteks_file=""):
     if st.session_state.df_aktif is not None:
         dataframe = st.session_state.df_aktif
         statistik_terverifikasi = buat_ringkasan_statistik(dataframe)
+        analisis_terstruktur = buat_analisis_terstruktur(dataframe)
+        analisis_terstruktur_teks = "\n".join(
+            f"{judul}:\n- " + "\n- ".join(daftar)
+            for judul, daftar in analisis_terstruktur.items()
+            if daftar
+        )
         sampel_data = dataframe.head(50).to_string(index=False)
         sumber_info = f"""Analisis data harus memakai statistik terverifikasi berikut:
 {statistik_terverifikasi}
+
+Analisis terstruktur:
+{analisis_terstruktur_teks}
 
 Sampel maksimal 50 baris untuk konteks tambahan:
 {sampel_data}
@@ -359,6 +498,8 @@ ATURAN ANALISIS DATA:
 - Jika data tidak cukup untuk menjawab, katakan dengan jelas.
 - Korelasi menunjukkan hubungan, bukan sebab-akibat.
 - Bedakan fakta statistik dari interpretasi atau dugaan.
+- Jangan menyebut hipotesis sebagai fakta.
+- Jangan mengklaim dampak bisnis, LTV, atau penyebab tanpa kolom/data pendukung.
 - Sebutkan data hilang jika relevan.
 """
     elif konteks_file:
