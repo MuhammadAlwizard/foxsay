@@ -143,6 +143,75 @@ def cari_kolom_tanggal(df):
             continue
     return kandidat[0] if kandidat else (None, None)
 
+def format_statistik(nilai):
+    """Format angka untuk konteks AI tanpa membuat nilai terlihat ambigu."""
+    if pd.isna(nilai):
+        return "NA"
+    return f"{float(nilai):.4f}"
+
+def buat_ringkasan_statistik(df):
+    """Hitung ringkasan statistik yang menjadi sumber fakta untuk jawaban AI."""
+    if df is None or df.empty:
+        return "DATA KOSONG: tidak ada statistik yang dapat dihitung."
+
+    bagian = [
+        "STATISTIK TERVERIFIKASI DARI PANDAS",
+        "Gunakan angka di bawah ini sebagai satu-satunya sumber statistik. Jangan menebak atau mengubah angka.",
+        f"Jumlah baris: {len(df)}",
+        f"Jumlah kolom: {len(df.columns)}",
+    ]
+
+    missing = df.isna().sum()
+    missing = missing[missing > 0]
+    if missing.empty:
+        bagian.append("Data hilang: tidak ditemukan.")
+    else:
+        bagian.append("Data hilang per kolom:")
+        for kolom, jumlah in missing.items():
+            bagian.append(f"- {kolom}: {int(jumlah)} nilai hilang")
+
+    numerik = df.select_dtypes(include="number")
+    if numerik.empty:
+        bagian.append("Kolom numerik: tidak ditemukan.")
+    else:
+        bagian.append("Statistik kolom numerik (count, mean, std, min, median, max):")
+        deskripsi = numerik.describe().T
+        for kolom, baris in deskripsi.iterrows():
+            bagian.append(
+                f"- {kolom}: count={format_statistik(baris['count'])}, "
+                f"mean={format_statistik(baris['mean'])}, "
+                f"std={format_statistik(baris['std'])}, "
+                f"min={format_statistik(baris['min'])}, "
+                f"median={format_statistik(baris['50%'])}, "
+                f"max={format_statistik(baris['max'])}"
+            )
+
+        if len(numerik.columns) >= 2:
+            korelasi = numerik.corr(numeric_only=True)
+            pasangan = []
+            for indeks, kolom_a in enumerate(korelasi.columns):
+                for kolom_b in korelasi.columns[indeks + 1:]:
+                    nilai = korelasi.loc[kolom_a, kolom_b]
+                    if pd.notna(nilai):
+                        pasangan.append((abs(nilai), kolom_a, kolom_b, nilai))
+            pasangan.sort(reverse=True)
+            if pasangan:
+                bagian.append("Korelasi Pearson terkuat (hubungan, bukan sebab-akibat):")
+                for _, kolom_a, kolom_b, nilai in pasangan[:10]:
+                    bagian.append(f"- {kolom_a} dengan {kolom_b}: {format_statistik(nilai)}")
+
+    kategori = df.select_dtypes(include=["object", "category", "bool"])
+    if not kategori.empty:
+        bagian.append("Kategori teratas per kolom kategorikal:")
+        for kolom in kategori.columns:
+            jumlah_unik = kategori[kolom].nunique(dropna=False)
+            if 1 < jumlah_unik <= 30:
+                frekuensi = kategori[kolom].value_counts(dropna=False).head(5)
+                daftar = ", ".join(f"{repr(indeks)} ({jumlah})" for indeks, jumlah in frekuensi.items())
+                bagian.append(f"- {kolom}: {daftar}")
+
+    return "\n".join(bagian)
+
 def buat_insight_data(df, kolom_tanggal, kolom_numerik, kolom_kategori):
     """Buat insight singkat berbasis statistik dasar, tanpa memanggil AI."""
     insight = [f"Data berisi {len(df):,} baris dan {len(df.columns)} kolom.".replace(",", ".")]
@@ -158,6 +227,25 @@ def buat_insight_data(df, kolom_tanggal, kolom_numerik, kolom_kategori):
             insight.append(f"Kategori tertinggi berdasarkan total **{nilai}** adalah **{ringkasan.index[0]}**.")
     if kolom_tanggal:
         insight.append(f"Kolom **{kolom_tanggal}** dikenali sebagai tanggal sehingga grafik tren dapat dibuat.")
+    missing = df.isna().sum()
+    missing = missing[missing > 0]
+    if not missing.empty:
+        detail_missing = ", ".join(f"{kolom} ({int(jumlah)})" for kolom, jumlah in missing.items())
+        insight.append(f"Ditemukan data hilang pada: **{detail_missing}**.")
+    if len(kolom_numerik) >= 2:
+        korelasi = df[kolom_numerik].corr(numeric_only=True)
+        pasangan = []
+        for indeks, kolom_a in enumerate(korelasi.columns):
+            for kolom_b in korelasi.columns[indeks + 1:]:
+                nilai = korelasi.loc[kolom_a, kolom_b]
+                if pd.notna(nilai):
+                    pasangan.append((abs(nilai), kolom_a, kolom_b, nilai))
+        if pasangan:
+            _, kolom_a, kolom_b, nilai = max(pasangan)
+            insight.append(
+                f"Hubungan numerik terkuat adalah **{kolom_a}** dan **{kolom_b}** "
+                f"dengan korelasi {nilai:.2f}; ini bukan bukti sebab-akibat."
+            )
     return insight
 
 def tampilkan_analisis_grafik(df):
@@ -182,6 +270,21 @@ def tampilkan_analisis_grafik(df):
     st.markdown("**Insight singkat**")
     for item in insight:
         st.markdown(f"- {item}")
+
+    if kolom_numerik:
+        st.markdown("**Statistik terverifikasi**")
+        statistik = df[kolom_numerik].describe().T.reset_index()
+        statistik = statistik.rename(columns={
+            "index": "Kolom",
+            "count": "Jumlah",
+            "mean": "Rata-rata",
+            "std": "Std",
+            "min": "Minimum",
+            "50%": "Median",
+            "max": "Maksimum",
+        })
+        kolom_tampil = ["Kolom", "Jumlah", "Rata-rata", "Std", "Minimum", "Median", "Maksimum"]
+        st.dataframe(statistik[kolom_tampil].round(4), hide_index=True, use_container_width=True)
 
     if kolom_tanggal and kolom_numerik:
         try:
@@ -241,7 +344,24 @@ def agent(pertanyaan, konteks_file=""):
     if client is None:
         return "GROQ_API_KEY belum dikonfigurasi. Tambahkan secret tersebut untuk menggunakan chat AI Foxsay."
 
-    if konteks_file:
+    if st.session_state.df_aktif is not None:
+        dataframe = st.session_state.df_aktif
+        statistik_terverifikasi = buat_ringkasan_statistik(dataframe)
+        sampel_data = dataframe.head(50).to_string(index=False)
+        sumber_info = f"""Analisis data harus memakai statistik terverifikasi berikut:
+{statistik_terverifikasi}
+
+Sampel maksimal 50 baris untuk konteks tambahan:
+{sampel_data}
+
+ATURAN ANALISIS DATA:
+- Jangan menghitung ulang atau menebak angka yang tidak ada di statistik terverifikasi.
+- Jika data tidak cukup untuk menjawab, katakan dengan jelas.
+- Korelasi menunjukkan hubungan, bukan sebab-akibat.
+- Bedakan fakta statistik dari interpretasi atau dugaan.
+- Sebutkan data hilang jika relevan.
+"""
+    elif konteks_file:
         sumber_info = f"""Isi file yang diupload user ({st.session_state.nama_file}):
 {konteks_file[:8000]}"""
     else:
