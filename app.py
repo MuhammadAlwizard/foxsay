@@ -692,14 +692,47 @@ def cari_internet(query):
     except Exception:
         return "(pencarian gagal, jawab pakai pengetahuan umum saja)"
 
-def agent(pertanyaan, konteks_file="", mode=None):
+def is_perintah_wrapped(teks):
+    """Kenali perintah rahasia tanpa membuatnya muncul sebagai tombol di UI."""
+    return " ".join(teks.strip().lower().split()) == "foxsay wrapped"
+
+def buat_konteks_wrapped():
+    """Siapkan riwayat sesi untuk perintah Foxsay Wrapped."""
+    if not st.session_state.history:
+        return ""
+
+    pesan_user = [teks for role, teks in st.session_state.history if role == "user"]
+    potongan_riwayat = []
+    for role, teks in st.session_state.history[-40:]:
+        nama_role = "USER" if role == "user" else "FOXSAY"
+        potongan_riwayat.append(f"{nama_role}: {teks}")
+
+    return f"""RIWAYAT SESI FOXSAY:
+Jumlah pesan user: {len(pesan_user)}
+Jumlah pesan AI: {sum(1 for role, _ in st.session_state.history if role == 'ai')}
+
+Percakapan terakhir:
+{chr(10).join(potongan_riwayat)}
+"""
+
+def agent(pertanyaan, konteks_file="", mode=None, special_mode=None):
     if client is None:
         return "GROQ_API_KEY belum dikonfigurasi. Tambahkan secret tersebut untuk menggunakan chat AI Foxsay."
 
     mode_aktif = mode or st.session_state.mode_aktif
     instruksi_mode = MODE_INSTRUCTIONS.get(mode_aktif, MODE_INSTRUCTIONS["Chill"])
 
-    if st.session_state.df_aktif is not None:
+    if special_mode == "wrapped":
+        konteks_wrapped = buat_konteks_wrapped()
+        if not konteks_wrapped:
+            return "Belum ada cukup percakapan untuk dibuat Foxsay Wrapped. Ngobrol dulu, bhapp!"
+        sumber_info = f"""{konteks_wrapped}
+
+PERINTAH KHUSUS FOXSAY WRAPPED:
+Buat rangkuman personal dari sesi ini berdasarkan riwayat di atas saja.
+Jangan mengarang topik, angka, kebiasaan, atau kesimpulan yang tidak terlihat di riwayat.
+"""
+    elif st.session_state.df_aktif is not None:
         dataframe = st.session_state.df_aktif
         statistik_terverifikasi = buat_ringkasan_statistik(dataframe)
         analisis_terstruktur = buat_analisis_terstruktur(dataframe)
@@ -742,15 +775,38 @@ Instruksi mode: {instruksi_mode}
 
 {sumber_info}
 
-Pertanyaan: {pertanyaan}
+    Pertanyaan: {pertanyaan}
 
 Jawab dengan gaya di atas."""
+
+    if special_mode == "wrapped":
+        prompt += """
+
+FORMAT FOXSAY WRAPPED:
+- Judul yang playful.
+- Jumlah pesan dan ringkasan topik utama.
+- Vibe atau pola komunikasi user dengan bahasa yang tidak menghakimi.
+- Momen atau tema yang paling sering muncul.
+- 2-3 penghargaan lucu yang tetap berdasarkan percakapan.
+- Satu rekomendasi atau tantangan kecil untuk sesi berikutnya.
+Gunakan bahasa Indonesia santai. Tulis sebagai rangkuman sesi, bukan profil permanen user.
+"""
 
     response = client.chat.completions.create(
         model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}]
     )
     return response.choices[0].message.content
+
+def jawab_pengguna(pertanyaan, konteks_file=""):
+    """Jalankan perintah rahasia atau teruskan pertanyaan ke agent biasa."""
+    if is_perintah_wrapped(pertanyaan):
+        return agent(
+            "Buat Foxsay Wrapped dari sesi percakapan ini.",
+            mode="Chill",
+            special_mode="wrapped",
+        )
+    return agent(pertanyaan, konteks_file)
 
 # Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
 
@@ -850,7 +906,7 @@ with kotak_utama:
                     st.session_state.teks_transkrip = ""
                     st.session_state.show_mic = False
                     with st.spinner("🦊 Foxsay lagi mikir..."):
-                        jawaban = agent(pertanyaan_vn, st.session_state.isi_file)
+                        jawaban = jawab_pengguna(pertanyaan_vn, st.session_state.isi_file)
                     st.session_state.history.append(("user", f"🎤 {pertanyaan_vn}"))
                     st.session_state.history.append(("ai", jawaban))
                     st.rerun()
@@ -870,7 +926,7 @@ if mic_clicked:
 
 if submitted and pertanyaan:
     with st.spinner("🦊 Foxsay lagi mikir..."):
-        jawaban = agent(pertanyaan, st.session_state.isi_file)
+        jawaban = jawab_pengguna(pertanyaan, st.session_state.isi_file)
     st.session_state.history.append(("user", pertanyaan))
     st.session_state.history.append(("ai", jawaban))
 
