@@ -5,6 +5,7 @@ import pypdf
 import docx
 import pandas as pd
 import plotly.express as px
+from html import escape
 from streamlit.errors import StreamlitSecretNotFoundError
 
 st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="centered")
@@ -436,6 +437,141 @@ def tampilkan_grafik_interaktif(df):
         except (ValueError, TypeError, KeyError) as error:
             st.warning(f"Grafik manual tidak dapat dibuat: {error}")
 
+def buat_grafik_laporan(df):
+    """Buat salinan grafik otomatis untuk dimasukkan ke laporan HTML."""
+    grafik = []
+    if df is None or df.empty:
+        return grafik
+
+    kolom_numerik = list(df.select_dtypes(include="number").columns)
+    kolom_kategori = [
+        kolom for kolom in df.select_dtypes(include=["object", "category", "bool"]).columns
+        if 1 < df[kolom].nunique(dropna=False) <= 30
+    ]
+    kolom_tanggal, tanggal = cari_kolom_tanggal(df)
+
+    if kolom_tanggal and kolom_numerik:
+        tren = df[[kolom_tanggal, kolom_numerik[0]]].copy()
+        tren["__tanggal"] = tanggal
+        tren["__nilai"] = pd.to_numeric(tren[kolom_numerik[0]], errors="coerce")
+        tren = tren.dropna(subset=["__tanggal", "__nilai"]).sort_values("__tanggal")
+        if not tren.empty:
+            fig = px.line(
+                tren,
+                x="__tanggal",
+                y="__nilai",
+                markers=True,
+                title=f"Tren {kolom_numerik[0]} dari waktu ke waktu",
+            )
+            fig.update_layout(xaxis_title=kolom_tanggal, yaxis_title=kolom_numerik[0])
+            grafik.append(fig)
+
+    if kolom_kategori and kolom_numerik:
+        kategori, nilai = kolom_kategori[0], kolom_numerik[0]
+        perbandingan = (
+            df.groupby(kategori, dropna=False)[nilai]
+            .sum()
+            .reset_index()
+            .sort_values(nilai, ascending=False)
+            .head(20)
+        )
+        if not perbandingan.empty:
+            fig = px.bar(
+                perbandingan,
+                x=kategori,
+                y=nilai,
+                title=f"Perbandingan {nilai} berdasarkan {kategori}",
+            )
+            grafik.append(fig)
+
+    if kolom_numerik:
+        nilai = kolom_numerik[0]
+        fig = px.histogram(df, x=nilai, nbins=30, title=f"Distribusi {nilai}")
+        grafik.append(fig)
+
+    if len(kolom_numerik) >= 2:
+        korelasi = df[kolom_numerik].corr(numeric_only=True)
+        fig = px.imshow(
+            korelasi,
+            text_auto=True,
+            color_continuous_scale="RdBu_r",
+            zmin=-1,
+            zmax=1,
+            title="Korelasi antar kolom angka",
+        )
+        grafik.append(fig)
+
+    return grafik
+
+def buat_laporan_html(df, nama_file=""):
+    """Buat laporan HTML mandiri yang bisa diunduh dan dibuka tanpa Streamlit."""
+    statistik = df.select_dtypes(include="number").describe().T.reset_index()
+    statistik = statistik.rename(columns={
+        "index": "Kolom",
+        "count": "Jumlah",
+        "mean": "Rata-rata",
+        "std": "Std",
+        "min": "Minimum",
+        "50%": "Median",
+        "max": "Maksimum",
+    })
+    kolom_statistik = ["Kolom", "Jumlah", "Rata-rata", "Std", "Minimum", "Median", "Maksimum"]
+    if not statistik.empty:
+        tabel_statistik = statistik[kolom_statistik].round(4).to_html(index=False, classes="stats", border=0)
+    else:
+        tabel_statistik = "<p>Tidak ada kolom numerik.</p>"
+
+    analisis = buat_analisis_terstruktur(df)
+    bagian_analisis = []
+    for judul, daftar in analisis.items():
+        if daftar:
+            isi = "".join(f"<li>{escape(str(item))}</li>" for item in daftar)
+            bagian_analisis.append(f"<h3>{escape(judul)}</h3><ul>{isi}</ul>")
+
+    grafik_html = []
+    for indeks, fig in enumerate(buat_grafik_laporan(df)):
+        grafik_html.append(
+            fig.to_html(
+                full_html=False,
+                include_plotlyjs=True if indeks == 0 else False,
+                config={"responsive": True, "displaylogo": False},
+            )
+        )
+
+    judul_file = escape(nama_file or "data yang dianalisis")
+    return f"""<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laporan Analisis Foxsay</title>
+<style>
+body {{ font-family: Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px; color: #252525; line-height: 1.55; }}
+h1 {{ color: #e9572b; margin-bottom: 4px; }}
+h2 {{ border-bottom: 2px solid #f0a07f; padding-bottom: 6px; margin-top: 32px; }}
+h3 {{ color: #d94b24; margin-bottom: 4px; }}
+.meta {{ color: #666; margin-bottom: 24px; }}
+.stats {{ border-collapse: collapse; width: 100%; margin: 12px 0 24px; }}
+.stats th, .stats td {{ border: 1px solid #ddd; padding: 8px; text-align: right; }}
+.stats th:first-child, .stats td:first-child {{ text-align: left; }}
+.stats th {{ background: #fff0ea; }}
+.chart {{ margin: 24px 0; overflow-x: auto; }}
+</style>
+</head>
+<body>
+<h1>Foxsay — Laporan Analisis Data</h1>
+<div class="meta">File: {judul_file} · {len(df):,} baris · {len(df.columns)} kolom</div>
+<h2>Statistik Terverifikasi</h2>
+{tabel_statistik}
+<h2>Analisis Bisnis Terstruktur</h2>
+{''.join(bagian_analisis) or '<p>Belum ada analisis lanjutan.</p>'}
+<h2>Grafik</h2>
+{''.join(f'<div class="chart">{grafik}</div>' for grafik in grafik_html) or '<p>Belum ada grafik yang dapat dibuat.</p>'}
+<hr>
+<p class="meta">Dibuat oleh Foxsay. Interpretasi dan hipotesis perlu dikonfirmasi dengan konteks bisnis.</p>
+</body>
+</html>"""
+
 def tampilkan_analisis_grafik(df):
     """Tampilkan tipe data, grafik otomatis, dan insight untuk CSV/XLSX."""
     if df is None or df.empty:
@@ -527,6 +663,15 @@ def tampilkan_analisis_grafik(df):
         st.info("Grafik korelasi membutuhkan minimal dua kolom angka.")
 
     tampilkan_grafik_interaktif(df)
+
+    laporan_html = buat_laporan_html(df, st.session_state.nama_file)
+    st.download_button(
+        "Download laporan analisis (HTML)",
+        data=laporan_html,
+        file_name="foxsay-laporan-analisis.html",
+        mime="text/html",
+        key="download_laporan_html",
+    )
 
 def cari_internet(query):
     try:
