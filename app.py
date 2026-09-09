@@ -109,28 +109,9 @@ santai di atas, bukan ikut logat daerah."""
 MODE_INSTRUCTIONS = {
     "Chill": "Jawab pertanyaan umum dengan gaya Foxsay yang santai, ekspresif, dan tetap informatif.",
     "Study": "Bantu user belajar. Jelaskan konsep secara bertahap, gunakan contoh sederhana, dan jika diminta buat rangkuman, flashcard, atau kuis. Jangan langsung memberi jawaban tugas tanpa penjelasan.",
-    "Creator": "Bantu user membuat konten. Untuk ide atau script TikTok/Reels/Shorts, selalu susun output dengan bagian: konsep, 3 hook, script per scene beserta estimasi waktu, arahan visual, voice-over, teks layar, caption, CTA, dan hashtag. Sesuaikan dengan topik, target audiens, durasi, platform, dan gaya yang dipilih. Jangan mengarang fakta atau mengklaim tren terbaru tanpa sumber.",
+    "Creator": "Bantu user membuat konten dengan cepat. Untuk ide atau script TikTok/Reels/Shorts, gunakan default yang masuk akal jika detail tidak disebutkan: TikTok, 30 detik, dan gaya santai. Selalu susun output dengan bagian: konsep, 3 hook, script per scene beserta estimasi waktu, arahan visual, voice-over, teks layar, caption, CTA, dan hashtag. Sesuaikan dengan detail yang diberikan user. Jangan mengarang fakta atau mengklaim tren terbaru tanpa sumber.",
     "Career": "Bantu user mempersiapkan karier. Fokus pada CV, portfolio, interview, personal branding, dan strategi pencarian kerja. Berikan saran yang konkret dan bisa langsung dipakai.",
 }
-
-def buat_konteks_mode(mode):
-    """Ambil parameter tambahan dari mode aktif untuk memperjelas instruksi AI."""
-    if mode != "Creator":
-        return ""
-
-    topik = st.session_state.get("creator_topik", "").strip() or "belum ditentukan"
-    platform = st.session_state.get("creator_platform", "TikTok")
-    durasi = st.session_state.get("creator_durasi", "30 detik")
-    target = st.session_state.get("creator_target", "").strip() or "umum"
-    gaya = st.session_state.get("creator_gaya", "Santai dan lucu")
-    return f"""PARAMETER CREATOR MODE:
-- Topik: {topik}
-- Platform: {platform}
-- Durasi target: {durasi}
-- Target audiens: {target}
-- Gaya konten: {gaya}
-
-Jika user meminta ide atau script, gunakan parameter ini dan format terstruktur. Jika topik belum ditentukan, tanyakan topiknya terlebih dahulu."""
 
 def baca_pdf(file):
     reader = pypdf.PdfReader(file)
@@ -717,7 +698,6 @@ def agent(pertanyaan, konteks_file="", mode=None):
 
     mode_aktif = mode or st.session_state.mode_aktif
     instruksi_mode = MODE_INSTRUCTIONS.get(mode_aktif, MODE_INSTRUCTIONS["Chill"])
-    konteks_mode = buat_konteks_mode(mode_aktif)
 
     if st.session_state.df_aktif is not None:
         dataframe = st.session_state.df_aktif
@@ -759,7 +739,6 @@ ATURAN ANALISIS DATA:
 
 MODE AKTIF: {mode_aktif}
 Instruksi mode: {instruksi_mode}
-{konteks_mode}
 
 {sumber_info}
 
@@ -836,30 +815,6 @@ with kotak_utama:
         mode_aktif = st.selectbox("Mode Foxsay", list(MODE_INSTRUCTIONS.keys()), key="mode_aktif")
     with kolom_info_mode:
         st.caption("Chill adalah mode default. Pilih Study, Creator, atau Career sesuai kebutuhan.")
-
-    if mode_aktif == "Creator":
-        with st.expander("Pengaturan Creator Mode", expanded=True):
-            creator_kolom_1, creator_kolom_2 = st.columns(2)
-            with creator_kolom_1:
-                st.text_input("Topik konten", placeholder="Contoh: AI untuk mahasiswa", key="creator_topik")
-                st.selectbox(
-                    "Platform",
-                    ["TikTok", "Instagram Reels", "YouTube Shorts"],
-                    key="creator_platform",
-                )
-                st.selectbox(
-                    "Durasi",
-                    ["15 detik", "30 detik", "60 detik", "90 detik"],
-                    index=1,
-                    key="creator_durasi",
-                )
-            with creator_kolom_2:
-                st.text_input("Target audiens", placeholder="Contoh: mahasiswa semester akhir", key="creator_target")
-                st.selectbox(
-                    "Gaya konten",
-                    ["Santai dan lucu", "Edukasi", "Storytelling", "Kontroversial tapi aman", "Profesional"],
-                    key="creator_gaya",
-                )
 
     with st.form("tanya_form", clear_on_submit=True):
         col_plus, col_mic, col_input, col_submit = st.columns([1, 1, 4, 1.3])
