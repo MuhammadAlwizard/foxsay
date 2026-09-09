@@ -805,6 +805,17 @@ def tampilkan_analisis_grafik(df):
         key="download_laporan_html",
     )
 
+def butuh_pencarian_web(pertanyaan):
+    """Cari hanya jika user memberi sinyal bahwa informasi terkini diperlukan."""
+    teks = " ".join(str(pertanyaan).lower().split())
+    sinyal_pencarian = (
+        "cari", "search", "googling", "telusuri", "cek internet", "di internet",
+        "berita", "terbaru", "terkini", "hari ini", "sekarang", "update",
+        "real-time", "realtime", "live", "harga", "jadwal", "cuaca", "kurs",
+        "viral", "tren terbaru",
+    )
+    return any(sinyal in teks for sinyal in sinyal_pencarian)
+
 def cari_internet(query):
     boleh, pesan_limit = cek_rate_limit("web_search")
     if not boleh:
@@ -894,10 +905,12 @@ ATURAN ANALISIS DATA:
     elif konteks_file:
         sumber_info = f"""Isi file yang diupload user ({st.session_state.nama_file}):
 {konteks_file[:8000]}"""
-    else:
+    elif butuh_pencarian_web(pertanyaan):
         hasil_search = cari_internet(pertanyaan)
         sumber_info = f"""Info dari internet (kalau ada):
 {hasil_search}"""
+    else:
+        sumber_info = "Tidak perlu pencarian web untuk pertanyaan ini. Jawab berdasarkan pengetahuan umum dan konteks yang tersedia."
 
     prompt = f"""{SYSTEM_STYLE}
 
@@ -929,9 +942,8 @@ Gunakan bahasa Indonesia santai. Tulis sebagai rangkuman sesi, bukan profil perm
     )
     return response.choices[0].message.content
 
-def jawab_pengguna(pertanyaan, konteks_file=""):
+def jawab_pengguna(pertanyaan, konteks_file="", rate_limit_key="chat"):
     """Jalankan perintah rahasia atau teruskan pertanyaan ke agent biasa."""
-    rate_limit_key = "file_analysis" if konteks_file else "chat"
     if is_perintah_wrapped(pertanyaan):
         return agent(
             "Buat Foxsay Wrapped dari sesi percakapan ini.",
