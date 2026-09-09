@@ -3,6 +3,11 @@ from groq import Groq
 from ddgs import DDGS
 import pypdf
 import docx
+from docx.document import Document as DocxDocument
+from docx.table import Table, _Cell
+from docx.text.paragraph import Paragraph
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
 import pandas as pd
 import plotly.express as px
 from html import escape
@@ -27,6 +32,8 @@ st.markdown("""
         border-radius: 15px;
         margin: 8px 0;
         color: white;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
     .chat-bubble-ai {
         background-color: #FF6B35;
@@ -34,6 +41,8 @@ st.markdown("""
         border-radius: 15px;
         margin: 8px 0;
         color: white;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
     .file-chip {
         background-color: #2b313e;
@@ -75,6 +84,19 @@ if "teks_transkrip" not in st.session_state:
     st.session_state.teks_transkrip = ""
 if "mode_aktif" not in st.session_state:
     st.session_state.mode_aktif = "Chill"
+if "excel_sheet_info" not in st.session_state:
+    st.session_state.excel_sheet_info = ""
+if "file_read_warning" not in st.session_state:
+    st.session_state.file_read_warning = ""
+
+MAX_HISTORY_STORED = 100
+MAX_HISTORY_RENDER = 30
+
+def tambah_riwayat(role, teks):
+    """Simpan riwayat dengan batas agar session tidak tumbuh tanpa batas."""
+    st.session_state.history.append((role, str(teks)))
+    if len(st.session_state.history) > MAX_HISTORY_STORED:
+        del st.session_state.history[:-MAX_HISTORY_STORED]
 
 SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
@@ -114,23 +136,90 @@ MODE_INSTRUCTIONS = {
 }
 
 def baca_pdf(file):
+    file.seek(0)
     reader = pypdf.PdfReader(file)
     teks = ""
     for page in reader.pages:
-        teks += page.extract_text() + "\n"
+        teks_halaman = page.extract_text() or ""
+        if teks_halaman.strip():
+            teks += teks_halaman + "\n"
     return teks
 
-def baca_docx(file):
-    doc = docx.Document(file)
-    return "\n".join([para.text for para in doc.paragraphs])
+def iterasi_blok_docx(parent):
+    """Iterasi paragraf dan tabel DOCX sesuai urutan kemunculannya."""
+    if isinstance(parent, DocxDocument):
+        parent_element = parent.element.body
+    elif isinstance(parent, _Cell):
+        parent_element = parent._tc
+    else:
+        raise TypeError("Parent DOCX tidak didukung")
 
-def baca_excel(file):
-    df = pd.read_excel(file)
+    for child in parent_element.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
+
+def baca_docx(file):
+    file.seek(0)
+    doc = docx.Document(file)
+    bagian = []
+    for blok in iterasi_blok_docx(doc):
+        if isinstance(blok, Paragraph):
+            teks = blok.text.strip()
+            if teks:
+                bagian.append(teks)
+        elif isinstance(blok, Table):
+            baris = []
+            for row in blok.rows:
+                sel = [" ".join(cell.text.split()) for cell in row.cells]
+                if any(sel):
+                    baris.append(" | ".join(sel))
+            if baris:
+                bagian.append("[TABEL]\n" + "\n".join(baris) + "\n[/TABEL]")
+    return "\n".join(bagian)
+
+def daftar_sheet_excel(file):
+    """Ambil nama sheet tanpa mengubah posisi baca file secara permanen."""
+    file.seek(0)
+    with pd.ExcelFile(file) as workbook:
+        return workbook.sheet_names
+
+def baca_excel(file, sheet_name=0):
+    file.seek(0)
+    df = pd.read_excel(file, sheet_name=sheet_name)
     return df
 
 def baca_csv(file):
+    file.seek(0)
     df = pd.read_csv(file)
     return df
+
+def buat_payload_audio(audio_value):
+    """Kirim bytes audio dengan nama dan MIME yang konsisten untuk Groq."""
+    mime_to_extension = {
+        "audio/flac": ".flac",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".mp4",
+        "audio/x-m4a": ".m4a",
+        "audio/m4a": ".m4a",
+        "audio/ogg": ".ogg",
+        "audio/wav": ".wav",
+        "audio/webm": ".webm",
+    }
+    extension_to_mime = {value: key for key, value in mime_to_extension.items()}
+    mime = str(getattr(audio_value, "type", "") or "").lower()
+    extension = mime_to_extension.get(mime)
+
+    if extension is None:
+        nama = str(getattr(audio_value, "name", "") or "").lower()
+        suffix = "." + nama.rsplit(".", 1)[-1] if "." in nama else ""
+        extension = suffix if suffix in extension_to_mime else ".wav"
+        mime = extension_to_mime[extension]
+
+    # Groq/OpenAI-compatible SDK mendokumentasikan tuple (filename, bytes).
+    # Ekstensi pada filename tetap mencerminkan MIME agar format dikenali API.
+    return (f"voice{extension}", audio_value.getvalue())
 
 def cari_kolom_tanggal(df):
     """Cari kolom tanggal secara aman tanpa mengubah dataframe asli."""
@@ -811,7 +900,13 @@ def jawab_pengguna(pertanyaan, konteks_file=""):
 # Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
 
 if st.session_state.nama_file:
-    st.markdown(f'<span class="file-chip">📎 {st.session_state.nama_file}</span>', unsafe_allow_html=True)
+    nama_file_aman = escape(str(st.session_state.nama_file))
+    st.markdown(f'<span class="file-chip">📎 {nama_file_aman}</span>', unsafe_allow_html=True)
+
+if st.session_state.file_read_warning:
+    st.warning(st.session_state.file_read_warning)
+if st.session_state.excel_sheet_info:
+    st.info(st.session_state.excel_sheet_info)
 
 if st.session_state.show_uploader:
     uploaded_file = st.file_uploader("Upload PDF, Word, Excel, atau CSV", type=["pdf", "docx", "xlsx", "csv"], label_visibility="collapsed")
@@ -819,12 +914,25 @@ if st.session_state.show_uploader:
         with st.spinner("🦊 Foxsay lagi baca file..."):
             try:
                 st.session_state.df_aktif = None
+                st.session_state.file_read_warning = ""
+                st.session_state.excel_sheet_info = ""
                 if uploaded_file.name.endswith(".pdf"):
                     isi = baca_pdf(uploaded_file)
+                    if not isi.strip():
+                        st.session_state.file_read_warning = (
+                            "PDF berhasil dibuka, tetapi tidak berisi teks yang bisa diekstrak. "
+                            "Kemungkinan PDF berupa scan/gambar; OCR belum tersedia."
+                        )
                 elif uploaded_file.name.endswith(".docx"):
                     isi = baca_docx(uploaded_file)
                 elif uploaded_file.name.endswith(".xlsx"):
-                    df = baca_excel(uploaded_file)
+                    nama_sheet = daftar_sheet_excel(uploaded_file)
+                    if len(nama_sheet) > 1:
+                        st.session_state.excel_sheet_info = (
+                            f"Excel memiliki {len(nama_sheet)} sheet ({', '.join(nama_sheet)}). "
+                            f"Foxsay saat ini membaca sheet pertama: {nama_sheet[0]}."
+                        )
+                    df = baca_excel(uploaded_file, sheet_name=0)
                     st.session_state.df_aktif = df
                     isi = df.to_string()
                 elif uploaded_file.name.endswith(".csv"):
@@ -853,14 +961,16 @@ if st.session_state.nama_file:
         if st.button(label_tombol):
             with st.spinner("🦊 Foxsay lagi mikir..."):
                 jawaban = agent(pesan_default, st.session_state.isi_file)
-            st.session_state.history.append(("user", f"[Minta rangkuman: {st.session_state.nama_file}]"))
-            st.session_state.history.append(("ai", jawaban))
+            tambah_riwayat("user", f"[Minta rangkuman: {st.session_state.nama_file}]")
+            tambah_riwayat("ai", jawaban)
             st.rerun()
     with col_b:
         if st.button("Hapus file"):
             st.session_state.isi_file = ""
             st.session_state.nama_file = ""
             st.session_state.df_aktif = None
+            st.session_state.file_read_warning = ""
+            st.session_state.excel_sheet_info = ""
             st.rerun()
 
 st.write("Tanya apa aja ke Foxsay:")
@@ -888,8 +998,10 @@ with kotak_utama:
         if audio_value is not None and client is not None:
             with st.spinner("🦊 Foxsay lagi dengerin..."):
                 try:
+                    if getattr(audio_value, "size", 0) > 100 * 1024 * 1024:
+                        raise ValueError("Ukuran audio melebihi batas Groq 100 MB.")
                     transkrip = client.audio.transcriptions.create(
-                        file=("voice.wav", audio_value.read()),
+                        file=buat_payload_audio(audio_value),
                         model="whisper-large-v3",
                         language="id"
                     )
@@ -907,8 +1019,8 @@ with kotak_utama:
                     st.session_state.show_mic = False
                     with st.spinner("🦊 Foxsay lagi mikir..."):
                         jawaban = jawab_pengguna(pertanyaan_vn, st.session_state.isi_file)
-                    st.session_state.history.append(("user", f"🎤 {pertanyaan_vn}"))
-                    st.session_state.history.append(("ai", jawaban))
+                    tambah_riwayat("user", f"🎤 {pertanyaan_vn}")
+                    tambah_riwayat("ai", jawaban)
                     st.rerun()
             with col_y:
                 if st.button("Batal"):
@@ -927,11 +1039,22 @@ if mic_clicked:
 if submitted and pertanyaan:
     with st.spinner("🦊 Foxsay lagi mikir..."):
         jawaban = jawab_pengguna(pertanyaan, st.session_state.isi_file)
-    st.session_state.history.append(("user", pertanyaan))
-    st.session_state.history.append(("ai", jawaban))
+    tambah_riwayat("user", pertanyaan)
+    tambah_riwayat("ai", jawaban)
 
-for role, teks in reversed(st.session_state.history):
+if st.session_state.history:
+    kolom_riwayat, kolom_clear = st.columns([4, 1])
+    with kolom_riwayat:
+        jumlah_tampil = min(len(st.session_state.history), MAX_HISTORY_RENDER)
+        st.caption(f"Riwayat chat — menampilkan {jumlah_tampil} pesan terbaru")
+    with kolom_clear:
+        if st.button("Hapus chat", key="clear_chat"):
+            st.session_state.history.clear()
+            st.rerun()
+
+for role, teks in reversed(st.session_state.history[-MAX_HISTORY_RENDER:]):
+    teks_aman = escape(str(teks))
     if role == "user":
-        st.markdown(f'<div class="chat-bubble-user">🙋 {teks}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="chat-bubble-user">🙋 {teks_aman}</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="chat-bubble-ai">🦊 {teks}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="chat-bubble-ai">🦊 {teks_aman}</div>', unsafe_allow_html=True)
