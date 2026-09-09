@@ -370,6 +370,72 @@ def buat_insight_data(df, kolom_tanggal, kolom_numerik, kolom_kategori):
             )
     return insight
 
+def tampilkan_grafik_interaktif(df):
+    """Berikan kontrol manual untuk mengeksplorasi pasangan kolom yang dipilih user."""
+    if df is None or df.empty or len(df.columns) == 0:
+        return
+
+    kolom_numerik = list(df.select_dtypes(include="number").columns)
+    if not kolom_numerik:
+        return
+
+    with st.expander("Eksplorasi grafik manual"):
+        st.caption("Pilih kolom sendiri untuk melihat pola yang belum tentu muncul pada grafik otomatis.")
+        kolom_x, kolom_y, jenis_grafik = st.columns(3)
+        with kolom_x:
+            x = st.selectbox("Sumbu X", list(df.columns), key="grafik_manual_x")
+        with kolom_y:
+            pilihan_y = ["(tanpa sumbu Y)"] + kolom_numerik
+            y = st.selectbox("Sumbu Y", pilihan_y, index=1, key="grafik_manual_y")
+        with jenis_grafik:
+            jenis = st.selectbox(
+                "Jenis grafik",
+                ["Bar", "Line", "Scatter", "Histogram"],
+                key="grafik_manual_jenis",
+            )
+
+        data = df.copy()
+        x_plot = x
+        kolom_tanggal, tanggal = cari_kolom_tanggal(df)
+        if x == kolom_tanggal:
+            data["__x_grafik"] = tanggal
+            x_plot = "__x_grafik"
+
+        try:
+            if jenis == "Histogram":
+                data_histogram = data[[x_plot]].dropna()
+                fig = px.histogram(data_histogram, x=x_plot, nbins=30, title=f"Distribusi {x}")
+            elif y == "(tanpa sumbu Y)":
+                st.info("Pilih kolom angka sebagai Sumbu Y untuk grafik ini.")
+                return
+            else:
+                data[y] = pd.to_numeric(data[y], errors="coerce")
+                data_plot = data[[x_plot, y]].dropna()
+                if data_plot.empty:
+                    st.warning("Tidak ada pasangan data valid untuk grafik yang dipilih.")
+                    return
+
+                if jenis == "Bar" and not pd.api.types.is_numeric_dtype(data_plot[x_plot]):
+                    data_plot = (
+                        data_plot.groupby(x_plot, dropna=False)[y]
+                        .mean()
+                        .reset_index()
+                        .sort_values(y, ascending=False)
+                        .head(30)
+                    )
+
+                if jenis == "Bar":
+                    fig = px.bar(data_plot, x=x_plot, y=y, title=f"Rata-rata {y} berdasarkan {x}")
+                elif jenis == "Line":
+                    fig = px.line(data_plot.sort_values(x_plot), x=x_plot, y=y, markers=True, title=f"Tren {y} berdasarkan {x}")
+                else:
+                    fig = px.scatter(data_plot, x=x_plot, y=y, title=f"Hubungan {x} dan {y}")
+
+            fig.update_layout(xaxis_title=x, yaxis_title=y if y != "(tanpa sumbu Y)" else "Jumlah")
+            st.plotly_chart(fig, use_container_width=True)
+        except (ValueError, TypeError, KeyError) as error:
+            st.warning(f"Grafik manual tidak dapat dibuat: {error}")
+
 def tampilkan_analisis_grafik(df):
     """Tampilkan tipe data, grafik otomatis, dan insight untuk CSV/XLSX."""
     if df is None or df.empty:
@@ -459,6 +525,8 @@ def tampilkan_analisis_grafik(df):
             st.warning(f"Grafik korelasi tidak dapat dibuat: {error}")
     else:
         st.info("Grafik korelasi membutuhkan minimal dua kolom angka.")
+
+    tampilkan_grafik_interaktif(df)
 
 def cari_internet(query):
     try:
