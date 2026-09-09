@@ -73,6 +73,8 @@ if "show_mic" not in st.session_state:
     st.session_state.show_mic = False
 if "teks_transkrip" not in st.session_state:
     st.session_state.teks_transkrip = ""
+if "mode_aktif" not in st.session_state:
+    st.session_state.mode_aktif = "Chill"
 
 SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
@@ -103,6 +105,13 @@ akhir. Selalu tulis kapital: ALIAS.
 Kamu paham berbagai bahasa daerah Indonesia (Jawa, Sunda, Betawi, dll) kalau user
 menggunakannya dalam pertanyaan, tapi kamu tetap menjawab pakai Bahasa Indonesia gaya
 santai di atas, bukan ikut logat daerah."""
+
+MODE_INSTRUCTIONS = {
+    "Chill": "Jawab pertanyaan umum dengan gaya Foxsay yang santai, ekspresif, dan tetap informatif.",
+    "Study": "Bantu user belajar. Jelaskan konsep secara bertahap, gunakan contoh sederhana, dan jika diminta buat rangkuman, flashcard, atau kuis. Jangan langsung memberi jawaban tugas tanpa penjelasan.",
+    "Creator": "Bantu user membuat konten. Untuk ide TikTok, berikan hook, script per scene, caption, CTA, dan hashtag jika relevan. Sesuaikan dengan topik, target audiens, durasi, dan gaya yang diminta.",
+    "Career": "Bantu user mempersiapkan karier. Fokus pada CV, portfolio, interview, personal branding, dan strategi pencarian kerja. Berikan saran yang konkret dan bisa langsung dipakai.",
+}
 
 def baca_pdf(file):
     reader = pypdf.PdfReader(file)
@@ -683,9 +692,12 @@ def cari_internet(query):
     except Exception:
         return "(pencarian gagal, jawab pakai pengetahuan umum saja)"
 
-def agent(pertanyaan, konteks_file=""):
+def agent(pertanyaan, konteks_file="", mode=None):
     if client is None:
         return "GROQ_API_KEY belum dikonfigurasi. Tambahkan secret tersebut untuk menggunakan chat AI Foxsay."
+
+    mode_aktif = mode or st.session_state.mode_aktif
+    instruksi_mode = MODE_INSTRUCTIONS.get(mode_aktif, MODE_INSTRUCTIONS["Chill"])
 
     if st.session_state.df_aktif is not None:
         dataframe = st.session_state.df_aktif
@@ -724,6 +736,9 @@ ATURAN ANALISIS DATA:
 {hasil_search}"""
 
     prompt = f"""{SYSTEM_STYLE}
+
+MODE AKTIF: {mode_aktif}
+Instruksi mode: {instruksi_mode}
 
 {sumber_info}
 
@@ -795,6 +810,12 @@ if st.session_state.nama_file:
 st.write("Tanya apa aja ke Foxsay:")
 kotak_utama = st.container(border=True)
 with kotak_utama:
+    kolom_mode, kolom_info_mode = st.columns([1.5, 4.5])
+    with kolom_mode:
+        st.selectbox("Mode Foxsay", list(MODE_INSTRUCTIONS.keys()), key="mode_aktif")
+    with kolom_info_mode:
+        st.caption("Chill adalah mode default. Pilih Study, Creator, atau Career sesuai kebutuhan.")
+
     with st.form("tanya_form", clear_on_submit=True):
         col_plus, col_mic, col_input, col_submit = st.columns([1, 1, 4, 1.3])
         with col_plus:
