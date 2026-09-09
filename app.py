@@ -11,6 +11,7 @@ from docx.oxml.text.paragraph import CT_P
 import pandas as pd
 import plotly.express as px
 from html import escape
+from time import time
 from streamlit.errors import StreamlitSecretNotFoundError
 
 st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="centered")
@@ -88,15 +89,48 @@ if "excel_sheet_info" not in st.session_state:
     st.session_state.excel_sheet_info = ""
 if "file_read_warning" not in st.session_state:
     st.session_state.file_read_warning = ""
+if "rate_limit_log" not in st.session_state:
+    st.session_state.rate_limit_log = {}
 
 MAX_HISTORY_STORED = 100
 MAX_HISTORY_RENDER = 30
+RATE_LIMIT_RULES = {
+    "chat": {"label": "chat", "max_requests": 20, "window_seconds": 10 * 60},
+    "voice": {"label": "voice", "max_requests": 5, "window_seconds": 10 * 60},
+    "file_analysis": {"label": "analisis file", "max_requests": 3, "window_seconds": 10 * 60},
+    "web_search": {"label": "web search", "max_requests": 5, "window_seconds": 10 * 60},
+}
 
 def tambah_riwayat(role, teks):
     """Simpan riwayat dengan batas agar session tidak tumbuh tanpa batas."""
     st.session_state.history.append((role, str(teks)))
     if len(st.session_state.history) > MAX_HISTORY_STORED:
         del st.session_state.history[:-MAX_HISTORY_STORED]
+
+def cek_rate_limit(kategori):
+    """Batasi request mahal per sesi agar API tidak mudah dispam."""
+    aturan = RATE_LIMIT_RULES.get(kategori)
+    if aturan is None:
+        return True, ""
+
+    sekarang = time()
+    catatan = st.session_state.rate_limit_log.setdefault(kategori, [])
+    catatan[:] = [
+        waktu_request
+        for waktu_request in catatan
+        if sekarang - waktu_request < aturan["window_seconds"]
+    ]
+
+    if len(catatan) >= aturan["max_requests"]:
+        sisa_detik = aturan["window_seconds"] - (sekarang - catatan[0])
+        sisa_menit = max(1, int((sisa_detik + 59) // 60))
+        return False, (
+            f"Foxsay lagi istirahat sebentar karena batas {aturan['label']} per sesi "
+            f"sudah tercapai. Coba lagi sekitar {sisa_menit} menit lagi ya 🦊"
+        )
+
+    catatan.append(sekarang)
+    return True, ""
 
 SYSTEM_STYLE = """Kamu adalah Foxsay, AI agent yang asik dan ekspresif. Jika ditanya siapa
 namamu, jawab bahwa kamu adalah Foxsay.
@@ -772,6 +806,10 @@ def tampilkan_analisis_grafik(df):
     )
 
 def cari_internet(query):
+    boleh, pesan_limit = cek_rate_limit("web_search")
+    if not boleh:
+        return f"(pencarian web sementara dibatasi: {pesan_limit})"
+
     try:
         hasil = DDGS().text(query, max_results=5)
         teks_hasil = ""
@@ -804,9 +842,13 @@ Percakapan terakhir:
 {chr(10).join(potongan_riwayat)}
 """
 
-def agent(pertanyaan, konteks_file="", mode=None, special_mode=None):
+def agent(pertanyaan, konteks_file="", mode=None, special_mode=None, rate_limit_key="chat"):
     if client is None:
         return "GROQ_API_KEY belum dikonfigurasi. Tambahkan secret tersebut untuk menggunakan chat AI Foxsay."
+
+    boleh, pesan_limit = cek_rate_limit(rate_limit_key)
+    if not boleh:
+        return pesan_limit
 
     mode_aktif = mode or st.session_state.mode_aktif
     instruksi_mode = MODE_INSTRUCTIONS.get(mode_aktif, MODE_INSTRUCTIONS["Chill"])
@@ -889,13 +931,15 @@ Gunakan bahasa Indonesia santai. Tulis sebagai rangkuman sesi, bukan profil perm
 
 def jawab_pengguna(pertanyaan, konteks_file=""):
     """Jalankan perintah rahasia atau teruskan pertanyaan ke agent biasa."""
+    rate_limit_key = "file_analysis" if konteks_file else "chat"
     if is_perintah_wrapped(pertanyaan):
         return agent(
             "Buat Foxsay Wrapped dari sesi percakapan ini.",
             mode="Chill",
             special_mode="wrapped",
+            rate_limit_key=rate_limit_key,
         )
-    return agent(pertanyaan, konteks_file)
+    return agent(pertanyaan, konteks_file, rate_limit_key=rate_limit_key)
 
 # Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
 
@@ -960,7 +1004,11 @@ if st.session_state.nama_file:
     with col_a:
         if st.button(label_tombol):
             with st.spinner("🦊 Foxsay lagi mikir..."):
-                jawaban = agent(pesan_default, st.session_state.isi_file)
+                jawaban = agent(
+                    pesan_default,
+                    st.session_state.isi_file,
+                    rate_limit_key="file_analysis",
+                )
             tambah_riwayat("user", f"[Minta rangkuman: {st.session_state.nama_file}]")
             tambah_riwayat("ai", jawaban)
             st.rerun()
@@ -995,19 +1043,23 @@ with kotak_utama:
 
     if st.session_state.show_mic:
         audio_value = st.audio_input("Rekam pesan suara kamu", label_visibility="collapsed")
-        if audio_value is not None and client is not None:
-            with st.spinner("🦊 Foxsay lagi dengerin..."):
-                try:
-                    if getattr(audio_value, "size", 0) > 100 * 1024 * 1024:
-                        raise ValueError("Ukuran audio melebihi batas Groq 100 MB.")
-                    transkrip = client.audio.transcriptions.create(
-                        file=buat_payload_audio(audio_value),
-                        model="whisper-large-v3",
-                        language="id"
-                    )
-                    st.session_state.teks_transkrip = transkrip.text
-                except Exception as e:
-                    st.error(f"Gagal transkrip suara: {e}")
+        if audio_value is not None and client is not None and not st.session_state.teks_transkrip:
+            boleh, pesan_limit = cek_rate_limit("voice")
+            if not boleh:
+                st.warning(pesan_limit)
+            else:
+                with st.spinner("🦊 Foxsay lagi dengerin..."):
+                    try:
+                        if getattr(audio_value, "size", 0) > 100 * 1024 * 1024:
+                            raise ValueError("Ukuran audio melebihi batas Groq 100 MB.")
+                        transkrip = client.audio.transcriptions.create(
+                            file=buat_payload_audio(audio_value),
+                            model="whisper-large-v3",
+                            language="id"
+                        )
+                        st.session_state.teks_transkrip = transkrip.text
+                    except Exception as e:
+                        st.error(f"Gagal transkrip suara: {e}")
 
         if st.session_state.teks_transkrip:
             st.info(f"📝 Hasil transkrip: \"{st.session_state.teks_transkrip}\"")
