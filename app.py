@@ -24,15 +24,28 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* Global Typography & Variables */
+    /* ==================== GLOBAL STYLES & VARIABLES ==================== */
     :root {
         --foxsay-orange: #FF6B35;
         --foxsay-orange-hover: #E8590C;
-        --foxsay-orange-light: rgba(255, 107, 53, 0.1);
+        --foxsay-orange-subtle: rgba(255, 107, 53, 0.08);
         --foxsay-orange-border: rgba(255, 107, 53, 0.28);
     }
 
-    /* Primary Buttons (Foxsay Orange) */
+    /* Prevent horizontal page wobble/overflow on all viewports */
+    html, body, [data-testid="stAppViewContainer"] {
+        max-width: 100vw !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Streamlit Main Container Spacing */
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Primary Buttons (Foxsay Orange Accent) */
     button[kind="primary"],
     div.stButton > button[kind="primary"],
     div[data-testid="stFormSubmitButton"] > button[kind="primary"] {
@@ -43,18 +56,21 @@ st.markdown("""
         padding: 9px 20px !important;
         font-weight: 600 !important;
         font-size: 0.95rem !important;
-        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.3) !important;
+        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.32) !important;
         transition: all 0.2s ease-in-out !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     button[kind="primary"]:hover,
     div.stButton > button[kind="primary"]:hover,
     div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover {
         background: linear-gradient(135deg, #E8590C 0%, #FF6B35 100%) !important;
-        box-shadow: 0 6px 18px rgba(255, 107, 53, 0.42) !important;
+        box-shadow: 0 6px 20px rgba(255, 107, 53, 0.45) !important;
         transform: translateY(-1px) !important;
     }
 
-    /* Secondary Buttons (Outlined / Neutral) */
+    /* Secondary Buttons (Outlined / Subtle) */
     button[kind="secondary"],
     div.stButton > button[kind="secondary"],
     div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {
@@ -65,6 +81,9 @@ st.markdown("""
         font-weight: 500 !important;
         color: inherit !important;
         transition: all 0.2s ease-in-out !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }
     button[kind="secondary"]:hover,
     div.stButton > button[kind="secondary"]:hover,
@@ -75,16 +94,26 @@ st.markdown("""
         transform: translateY(-1px) !important;
     }
 
-    /* Header Banner */
+    /* Destructive Action Buttons (Clear chat, delete file) */
+    button[data-testid*="clear_chat"]:hover,
+    button[data-testid*="hapus_file"]:hover {
+        border-color: #EF4444 !important;
+        color: #EF4444 !important;
+        background-color: rgba(239, 68, 68, 0.08) !important;
+    }
+
+    /* Header Hero Card */
     .foxsay-header-card {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 16px 22px;
-        margin-bottom: 20px;
+        padding: 18px 24px;
+        margin-bottom: 8px;
         background: linear-gradient(135deg, rgba(255, 107, 53, 0.1) 0%, rgba(255, 140, 66, 0.03) 100%);
-        border: 1px solid rgba(255, 107, 53, 0.22);
+        border: 1px solid rgba(255, 107, 53, 0.24);
         border-radius: 18px;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .foxsay-brand-box {
         display: flex;
@@ -100,6 +129,7 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         border: 1px solid rgba(255, 107, 53, 0.3);
+        flex-shrink: 0;
     }
     .foxsay-title-text {
         font-size: 1.85rem;
@@ -114,19 +144,22 @@ st.markdown("""
         font-size: 0.92rem;
         color: #777;
         margin: 3px 0 0 0;
+        line-height: 1.4;
     }
 
-    /* API Key Warning Card */
+    /* API Key Warning Alert Card */
     .foxsay-api-banner {
         display: flex;
         align-items: flex-start;
         gap: 12px;
         background: rgba(245, 158, 11, 0.08);
-        border: 1px solid rgba(245, 158, 11, 0.3);
+        border: 1px solid rgba(245, 158, 11, 0.32);
         border-radius: 14px;
         padding: 12px 18px;
         margin-bottom: 20px;
         font-size: 0.9rem;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     /* Active File Card */
@@ -135,24 +168,28 @@ st.markdown("""
         border: 1px solid rgba(255, 107, 53, 0.25);
         border-radius: 16px;
         padding: 16px 20px;
-        margin-bottom: 18px;
+        margin-bottom: 14px;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .active-file-header {
         display: flex;
         align-items: center;
         gap: 14px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
     }
     .active-file-icon {
         font-size: 2rem;
         background: rgba(255, 107, 53, 0.12);
         padding: 6px 12px;
         border-radius: 12px;
+        flex-shrink: 0;
     }
     .active-file-title {
         font-weight: 700;
         font-size: 1.05rem;
-        word-break: break-all;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
     .active-file-meta {
         font-size: 0.84rem;
@@ -168,29 +205,25 @@ st.markdown("""
         border: 1px dashed rgba(255, 107, 53, 0.3);
         border-radius: 20px;
         margin: 12px 0 22px;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
     .empty-state-icon {
         font-size: 3rem;
         margin-bottom: 10px;
     }
 
-    /* Chat Input Form Container */
-    .chat-input-wrapper {
-        background: rgba(128, 128, 128, 0.03);
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        border-radius: 18px;
-        padding: 14px 18px;
-        margin-bottom: 22px;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
-    }
-
-    /* Chat Messages Styling */
+    /* Chat Messages Bubble Polish */
     [data-testid="stChatMessage"] {
         border-radius: 16px !important;
         padding: 14px 18px !important;
         margin-bottom: 12px !important;
         border: 1px solid rgba(128, 128, 128, 0.16) !important;
         background-color: rgba(128, 128, 128, 0.03) !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-wrap: anywhere !important;
+        word-break: break-word !important;
     }
     [data-testid="stChatMessage"]:hover {
         box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04) !important;
@@ -215,6 +248,28 @@ st.markdown("""
         margin-bottom: 3px;
     }
 
+    /* Code blocks and tables horizontal scrolling inside chat */
+    [data-testid="stChatMessage"] pre,
+    [data-testid="stChatMessage"] code {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+    [data-testid="stChatMessage"] table {
+        display: block !important;
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* Dataframe and Plotly Chart Responsive Containers */
+    .stDataFrame,
+    [data-testid="stDataFrame"],
+    .js-plotly-plot,
+    .stPlotlyChart {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+    }
+
     /* Voice Input Card */
     .voice-card {
         background: rgba(255, 107, 53, 0.05);
@@ -222,11 +277,194 @@ st.markdown("""
         border-radius: 14px;
         padding: 14px 18px;
         margin-bottom: 16px;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* ==================== RESPONSIVE MEDIA QUERIES (MOBILE AUDIT) ==================== */
+
+    /* Tablet / Mobile breakpoint: <= 768px */
+    @media (max-width: 768px) {
+        .main .block-container,
+        [data-testid="stMainBlockContainer"] {
+            padding-left: 12px !important;
+            padding-right: 12px !important;
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+        }
+
+        /* Touch target minimum 44px on all buttons and inputs */
+        button,
+        .stButton > button,
+        div[data-testid="stFormSubmitButton"] > button {
+            min-height: 44px !important;
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+        }
+        .stTextInput input {
+            min-height: 44px !important;
+            font-size: 16px !important; /* Prevents auto-zoom on iOS */
+        }
+        .stSelectbox div[data-baseweb="select"] {
+            min-height: 44px !important;
+        }
+
+        /* Header Section Stack on Mobile */
+        .st-key-header_section div[data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            gap: 10px !important;
+        }
+        .st-key-header_section div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        .foxsay-header-card {
+            padding: 14px 16px !important;
+            margin-bottom: 4px !important;
+        }
+        .foxsay-brand-box {
+            gap: 12px !important;
+        }
+        .foxsay-logo-badge {
+            font-size: 1.8rem !important;
+            padding: 4px 10px !important;
+        }
+        .foxsay-title-text {
+            font-size: 1.5rem !important;
+        }
+        .foxsay-subtitle-text {
+            font-size: 0.82rem !important;
+        }
+
+        /* Chat bubbles padding & text size on mobile */
+        [data-testid="stChatMessage"] {
+            padding: 12px 14px !important;
+            border-radius: 14px !important;
+            margin-bottom: 10px !important;
+        }
+        [data-testid="stChatMessage"] div[data-testid="stMarkdownContainer"] {
+            font-size: 0.92rem !important;
+            line-height: 1.5 !important;
+        }
+        div[data-testid="chatAvatarIcon-user"],
+        div[data-testid="chatAvatarIcon-assistant"] {
+            width: 30px !important;
+            height: 30px !important;
+        }
+    }
+
+    /* Smartphone Portrait Viewports: <= 640px (360x800, 390x844, 412x915) */
+    @media (max-width: 640px) {
+        /* Chat Input Form 2-Row Layout */
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px 6px !important;
+        }
+        /* Row 1: File & Mic buttons (48% each, min 44px height) */
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1) {
+            width: calc(50% - 4px) !important;
+            min-width: calc(50% - 4px) !important;
+            flex: 1 1 calc(50% - 4px) !important;
+        }
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2) {
+            width: calc(50% - 4px) !important;
+            min-width: calc(50% - 4px) !important;
+            flex: 1 1 calc(50% - 4px) !important;
+        }
+        /* Row 2: Text Input (70%) & Tanya 🚀 (30%) */
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
+            width: calc(71% - 4px) !important;
+            min-width: calc(71% - 4px) !important;
+            flex: 1 1 calc(71% - 4px) !important;
+        }
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4) {
+            width: calc(29% - 4px) !important;
+            min-width: calc(29% - 4px) !important;
+            flex: 1 1 calc(29% - 4px) !important;
+        }
+
+        /* Empty State Suggestions Stack on Mobile */
+        .st-key-empty_state_section div[data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+        .st-key-empty_state_section div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        .st-key-empty_state_section button {
+            width: 100% !important;
+            min-height: 48px !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            padding: 10px 14px !important;
+        }
+        .empty-state-card {
+            padding: 24px 16px 20px !important;
+        }
+        .empty-state-icon {
+            font-size: 2.5rem !important;
+        }
+
+        /* Active File Actions Stack on Mobile */
+        .st-key-active_file_section div[data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            gap: 8px !important;
+        }
+        .st-key-active_file_section div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+
+        /* History Toolbar Flex-Wrap on Mobile */
+        .st-key-history_toolbar_section div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 8px 6px !important;
+        }
+        .st-key-history_toolbar_section div[data-testid="column"]:nth-child(1) {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        .st-key-history_toolbar_section div[data-testid="column"]:nth-child(2) {
+            width: calc(58% - 3px) !important;
+            min-width: calc(58% - 3px) !important;
+            flex: 1 1 calc(58% - 3px) !important;
+        }
+        .st-key-history_toolbar_section div[data-testid="column"]:nth-child(3) {
+            width: calc(42% - 3px) !important;
+            min-width: calc(42% - 3px) !important;
+            flex: 1 1 calc(42% - 3px) !important;
+        }
+    }
+
+    /* Ultra-narrow devices: <= 375px (e.g. 360x800) */
+    @media (max-width: 375px) {
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
+            width: calc(66% - 3px) !important;
+            min-width: calc(66% - 3px) !important;
+            flex: 1 1 calc(66% - 3px) !important;
+        }
+        div[data-testid="stForm"] > div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4) {
+            width: calc(34% - 3px) !important;
+            min-width: calc(34% - 3px) !important;
+            flex: 1 1 calc(34% - 3px) !important;
+        }
+        .foxsay-title-text {
+            font-size: 1.35rem !important;
+        }
+        .foxsay-subtitle-text {
+            font-size: 0.78rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Mode Descriptions
+# Mode Instructions
 MODE_INSTRUCTIONS = {
     "Chill": "Jawab pertanyaan umum dengan gaya Foxsay yang santai, ekspresif, dan tetap informatif.",
     "Study": "Bantu user belajar. Jelaskan konsep secara bertahap, gunakan contoh sederhana, dan jika diminta buat rangkuman, flashcard, atau kuis. Jangan langsung memberi jawaban tugas tanpa penjelasan.",
@@ -234,33 +472,34 @@ MODE_INSTRUCTIONS = {
     "Career": "Bantu user mempersiapkan karier. Fokus pada CV, portfolio, interview, personal branding, dan strategi pencarian kerja. Berikan saran yang konkret dan bisa langsung dipakai.",
 }
 
-# Header Section
-col_header_left, col_header_right = st.columns([3.2, 1.8])
-with col_header_left:
-    st.markdown("""
-    <div class="foxsay-header-card">
-        <div class="foxsay-brand-box">
-            <span class="foxsay-logo-badge">🦊</span>
-            <div>
-                <h1 class="foxsay-title-text">Foxsay</h1>
-                <p class="foxsay-subtitle-text">AI Agent cerdas & asik — tanya apa saja, riset web, bedah dokumen, dan analisis data otomatis.</p>
+# Header Section (with st-key-header_section for mobile stacking)
+with st.container(key="header_section"):
+    col_header_left, col_header_right = st.columns([3.2, 1.8])
+    with col_header_left:
+        st.markdown("""
+        <div class="foxsay-header-card">
+            <div class="foxsay-brand-box">
+                <span class="foxsay-logo-badge">🦊</span>
+                <div>
+                    <h1 class="foxsay-title-text">Foxsay</h1>
+                    <p class="foxsay-subtitle-text">AI Agent cerdas & asik — tanya apa saja, riset web, bedah dokumen, dan analisis data otomatis.</p>
+                </div>
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-with col_header_right:
-    mode_dipilih = st.selectbox(
-        "Mode Foxsay:",
-        options=list(MODE_INSTRUCTIONS.keys()),
-        index=0 if "mode_aktif" not in st.session_state else list(MODE_INSTRUCTIONS.keys()).index(st.session_state.mode_aktif),
-        key="mode_aktif_selector",
-        help="Pilih mode interaksi Foxsay sesuai kebutuhanmu"
-    )
-    st.session_state.mode_aktif = mode_dipilih
-    st.caption(f"💡 *{MODE_INSTRUCTIONS[mode_dipilih]}*")
+    with col_header_right:
+        mode_dipilih = st.selectbox(
+            "Mode Foxsay:",
+            options=list(MODE_INSTRUCTIONS.keys()),
+            index=0 if "mode_aktif" not in st.session_state else list(MODE_INSTRUCTIONS.keys()).index(st.session_state.mode_aktif),
+            key="mode_aktif_selector",
+            help="Pilih persona Foxsay: Chill (santai), Study (belajar), Creator (konten), Career (karier)"
+        )
+        st.session_state.mode_aktif = mode_dipilih
+        st.caption(f"💡 *{MODE_INSTRUCTIONS[mode_dipilih]}*")
 
-# API Key Validation
+# API Key Validation (No Login System - direct access)
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except (KeyError, StreamlitSecretNotFoundError):
@@ -273,7 +512,7 @@ if client is None:
         <span style="font-size: 1.3rem;">🔑</span>
         <div>
             <strong>GROQ_API_KEY belum terpasang.</strong><br>
-            Chat AI dan voice input memerlukan secret <code>GROQ_API_KEY</code> di <code>.streamlit/secrets.toml</code>. Fitur pembacaan dokumen dan visualisasi data tetap aktif.
+            Chat AI dan voice input memerlukan secret <code>GROQ_API_KEY</code> di <code>.streamlit/secrets.toml</code>. Fitur pembacaan dokumen dan visualisasi data tetap aktif tanpa login.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1180,47 +1419,48 @@ if st.session_state.nama_file:
     icon_file = "📊" if ext in ["xlsx", "csv"] else ("📄" if ext == "pdf" else "📝")
     info_baris = f" · {len(st.session_state.df_aktif):,} baris × {len(st.session_state.df_aktif.columns)} kolom" if st.session_state.df_aktif is not None else ""
 
-    st.markdown(f"""
-    <div class="active-file-card">
-        <div class="active-file-header">
-            <span class="active-file-icon">{icon_file}</span>
-            <div style="flex-grow: 1;">
-                <div class="active-file-title">{escape(str(st.session_state.nama_file))}</div>
-                <div class="active-file-meta">Dokumen aktif{info_baris} · Siap dianalisis atau ditanyakan</div>
+    with st.container(key="active_file_section"):
+        st.markdown(f"""
+        <div class="active-file-card">
+            <div class="active-file-header">
+                <span class="active-file-icon">{icon_file}</span>
+                <div style="flex-grow: 1; min-width: 0;">
+                    <div class="active-file-title">{escape(str(st.session_state.nama_file))}</div>
+                    <div class="active-file-meta">Dokumen aktif{info_baris} · Siap dianalisis atau ditanyakan</div>
+                </div>
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    if st.session_state.file_read_warning:
-        st.warning(st.session_state.file_read_warning)
-    if st.session_state.excel_sheet_info:
-        st.info(st.session_state.excel_sheet_info)
+        if st.session_state.file_read_warning:
+            st.warning(st.session_state.file_read_warning)
+        if st.session_state.excel_sheet_info:
+            st.info(st.session_state.excel_sheet_info)
 
-    label_tombol = "📊 Analisis data ini" if st.session_state.df_aktif is not None else "📑 Rangkum isi file"
-    pesan_default = "Tolong analisis data ini: kasih insight menarik, pattern, atau hal penting yang perlu diperhatikan." if st.session_state.df_aktif is not None else "Tolong rangkum isi file ini secara singkat dan jelas."
+        label_tombol = "📊 Analisis data ini" if st.session_state.df_aktif is not None else "📑 Rangkum isi file"
+        pesan_default = "Tolong analisis data ini: kasih insight menarik, pattern, atau hal penting yang perlu diperhatikan." if st.session_state.df_aktif is not None else "Tolong rangkum isi file ini secara singkat dan jelas."
 
-    col_btn_analisis, col_btn_hapus = st.columns([3, 1])
-    with col_btn_analisis:
-        if st.button(label_tombol, type="primary", use_container_width=True, help="Minta Foxsay menganalisis atau merangkum file ini"):
-            with st.spinner("🦊 Foxsay lagi mikir..."):
-                jawaban = agent(
-                    pesan_default,
-                    st.session_state.isi_file,
-                    rate_limit_key="file_analysis",
-                )
-            tambah_riwayat("user", f"[Minta rangkuman: {st.session_state.nama_file}]")
-            tambah_riwayat("ai", jawaban)
-            st.rerun()
+        col_btn_analisis, col_btn_hapus = st.columns([3, 1])
+        with col_btn_analisis:
+            if st.button(label_tombol, type="primary", use_container_width=True, help="Minta Foxsay menganalisis atau merangkum file ini"):
+                with st.spinner("🦊 Foxsay lagi mikir..."):
+                    jawaban = agent(
+                        pesan_default,
+                        st.session_state.isi_file,
+                        rate_limit_key="file_analysis",
+                    )
+                tambah_riwayat("user", f"[Minta rangkuman: {st.session_state.nama_file}]")
+                tambah_riwayat("ai", jawaban)
+                st.rerun()
 
-    with col_btn_hapus:
-        if st.button("🗑️ Hapus file", type="secondary", use_container_width=True, help="Hapus file aktif dari sesi ini"):
-            st.session_state.isi_file = ""
-            st.session_state.nama_file = ""
-            st.session_state.df_aktif = None
-            st.session_state.file_read_warning = ""
-            st.session_state.excel_sheet_info = ""
-            st.rerun()
+        with col_btn_hapus:
+            if st.button("🗑️ Hapus file", type="secondary", use_container_width=True, help="Hapus file aktif dari sesi ini"):
+                st.session_state.isi_file = ""
+                st.session_state.nama_file = ""
+                st.session_state.df_aktif = None
+                st.session_state.file_read_warning = ""
+                st.session_state.excel_sheet_info = ""
+                st.rerun()
 
     # Organized Expander for Dataframe & Visualizations
     if st.session_state.df_aktif is not None:
@@ -1234,7 +1474,7 @@ if st.session_state.nama_file:
 
 # Uploader Section
 if st.session_state.show_uploader:
-    with st.container():
+    with st.container(key="uploader_section"):
         col_up_title, col_up_close = st.columns([5, 1])
         with col_up_title:
             st.markdown("**📁 Unggah Dokumen atau Dataset** *(PDF, DOCX, XLSX, atau CSV)*")
@@ -1289,7 +1529,7 @@ if st.session_state.show_uploader:
 
 # ==================== CHAT INPUT COMMAND CENTER ====================
 
-with st.container():
+with st.container(key="chat_input_section"):
     with st.form("tanya_form", clear_on_submit=True):
         col_attach, col_mic, col_input, col_submit = st.columns([1.1, 1.1, 5.8, 1.4])
         with col_attach:
@@ -1322,7 +1562,7 @@ with st.container():
 
 # Handle Voice Input Widget
 if st.session_state.show_mic:
-    with st.container():
+    with st.container(key="voice_section"):
         st.markdown("""
         <div class="voice-card">
             <strong>🎙️ Perekam Pesan Suara (Voice Input)</strong>
@@ -1388,31 +1628,32 @@ if not st.session_state.history:
     <div class="empty-state-card">
         <div class="empty-state-icon">🦊</div>
         <h3 style="margin-bottom: 6px; font-weight: 700;">Belum ada percakapan</h3>
-        <p style="opacity: 0.8; margin-bottom: 18px; max-width: 600px; margin-left: auto; margin-right: auto;">
+        <p style="opacity: 0.8; margin-bottom: 18px; max-width: 600px; margin-left: auto; margin-right: auto; line-height: 1.45;">
             Mulai obrolan seru bareng Foxsay! Kamu bisa tanya materi belajar, minta ide konten kreatif, bedah CV, atau analisis data statistik.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("<p style='font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; color: #FF6B35;'>💡 Contoh pertanyaan cepat:</p>", unsafe_allow_html=True)
-    col_p1, col_p2, col_p3 = st.columns(3)
-    prompt_pilihan = None
+    with st.container(key="empty_state_section"):
+        st.markdown("<p style='font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; color: #FF6B35;'>💡 Contoh pertanyaan cepat:</p>", unsafe_allow_html=True)
+        col_p1, col_p2, col_p3 = st.columns(3)
+        prompt_pilihan = None
 
-    with col_p1:
-        if st.button("📊 Analisis file saya", use_container_width=True, help="Minta Foxsay menganalisis file atau data aktif"):
-            if st.session_state.nama_file:
-                prompt_pilihan = "Tolong analisis file yang sudah saya upload: berikan ringkasan, insight penting, dan pola yang menarik."
-            else:
-                st.session_state.show_uploader = True
-                prompt_pilihan = "Format file apa saja yang bisa kamu analisis dan apa saja fitur analisis data yang tersedia di Foxsay?"
+        with col_p1:
+            if st.button("📊 Analisis file saya", use_container_width=True, help="Minta Foxsay menganalisis file atau data aktif"):
+                if st.session_state.nama_file:
+                    prompt_pilihan = "Tolong analisis file yang sudah saya upload: berikan ringkasan, insight penting, dan pola yang menarik."
+                else:
+                    st.session_state.show_uploader = True
+                    prompt_pilihan = "Format file apa saja yang bisa kamu analisis dan apa saja fitur analisis data yang tersedia di Foxsay?"
 
-    with col_p2:
-        if st.button("✨ Bantu buat caption", use_container_width=True, help="Buat ide konsep dan caption medsos"):
-            prompt_pilihan = "Bantu buatkan 3 ide konsep dan caption TikTok/Reels yang engaging lengkap dengan hook, visual direction, dan CTA."
+        with col_p2:
+            if st.button("✨ Bantu buat caption", use_container_width=True, help="Buat ide konsep dan caption medsos"):
+                prompt_pilihan = "Bantu buatkan 3 ide konsep dan caption TikTok/Reels yang engaging lengkap dengan hook, visual direction, dan CTA."
 
-    with col_p3:
-        if st.button("💡 Jelaskan konsep ini", use_container_width=True, help="Jelaskan topik rumit dengan bahasa sederhana"):
-            prompt_pilihan = "Jelaskan konsep Machine Learning dan AI dengan analogi sederhana sehari-hari agar mudah dipahami pemula."
+        with col_p3:
+            if st.button("💡 Jelaskan konsep ini", use_container_width=True, help="Jelaskan topik rumit dengan bahasa sederhana"):
+                prompt_pilihan = "Jelaskan konsep Machine Learning dan AI dengan analogi sederhana sehari-hari agar mudah dipahami pemula."
 
     if prompt_pilihan:
         with st.spinner("🦊 Foxsay lagi mikir..."):
@@ -1422,21 +1663,22 @@ if not st.session_state.history:
         st.rerun()
 
 else:
-    col_hist_title, col_hist_order, col_hist_clear = st.columns([4, 2, 1.3])
-    with col_hist_title:
-        jumlah_tampil = min(len(st.session_state.history), MAX_HISTORY_RENDER)
-        st.markdown(f"**💬 Percakapan** · *Menampilkan {jumlah_tampil} pesan terbaru*")
-    with col_hist_order:
-        pilihan_urutan = st.selectbox(
-            "Urutan:",
-            ["Terbaru di atas", "Kronologis (Lama ke Baru)"],
-            label_visibility="collapsed",
-            key="urutan_chat"
-        )
-    with col_hist_clear:
-        if st.button("🗑️ Hapus chat", type="secondary", use_container_width=True, key="clear_chat", help="Hapus seluruh riwayat percakapan"):
-            st.session_state.history.clear()
-            st.rerun()
+    with st.container(key="history_toolbar_section"):
+        col_hist_title, col_hist_order, col_hist_clear = st.columns([4, 2, 1.3])
+        with col_hist_title:
+            jumlah_tampil = min(len(st.session_state.history), MAX_HISTORY_RENDER)
+            st.markdown(f"**💬 Percakapan** · *Menampilkan {jumlah_tampil} pesan terbaru*")
+        with col_hist_order:
+            pilihan_urutan = st.selectbox(
+                "Urutan:",
+                ["Terbaru di atas", "Kronologis (Lama ke Baru)"],
+                label_visibility="collapsed",
+                key="urutan_chat"
+            )
+        with col_hist_clear:
+            if st.button("🗑️ Hapus chat", type="secondary", use_container_width=True, key="clear_chat", help="Hapus seluruh riwayat percakapan"):
+                st.session_state.history.clear()
+                st.rerun()
 
     pesan_tampil = dapatkan_pesan_ditampilkan(st.session_state.history, MAX_HISTORY_RENDER, pilihan_urutan)
 
