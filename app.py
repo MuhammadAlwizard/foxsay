@@ -1614,7 +1614,7 @@ if attach_clicked and not pertanyaan:
 elif mic_clicked and not pertanyaan:
     st.session_state.show_mic = not st.session_state.show_mic
     st.rerun()
-elif (submitted or pertanyaan) and pertanyaan.strip():
+elif submitted and pertanyaan.strip():
     with st.spinner("🦊 Foxsay lagi mikir..."):
         jawaban = jawab_pengguna(pertanyaan, st.session_state.isi_file)
     tambah_riwayat("user", pertanyaan)
