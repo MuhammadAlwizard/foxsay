@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 from groq import Groq
 from ddgs import DDGS
@@ -14,52 +15,252 @@ from html import escape
 from time import time
 from streamlit.errors import StreamlitSecretNotFoundError
 
-st.set_page_config(page_title="Foxsay", page_icon="🦊", layout="centered")
+st.set_page_config(
+    page_title="Foxsay — Asisten AI & Analisis Data",
+    page_icon="🦊",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 st.markdown("""
 <style>
-    div.stButton > button,
-    div[data-testid="stFormSubmitButton"] > button {
-        background-color: #FF6B35 !important;
-        color: white !important;
-        border-radius: 20px !important;
+    /* Global Typography & Variables */
+    :root {
+        --foxsay-orange: #FF6B35;
+        --foxsay-orange-hover: #E8590C;
+        --foxsay-orange-light: rgba(255, 107, 53, 0.1);
+        --foxsay-orange-border: rgba(255, 107, 53, 0.28);
+    }
+
+    /* Primary Buttons (Foxsay Orange) */
+    button[kind="primary"],
+    div.stButton > button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"] {
+        background: linear-gradient(135deg, #FF6B35 0%, #FF8542 100%) !important;
+        color: #FFFFFF !important;
         border: none !important;
-        padding: 10px 24px !important;
-        font-weight: bold !important;
+        border-radius: 12px !important;
+        padding: 9px 20px !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.3) !important;
+        transition: all 0.2s ease-in-out !important;
     }
-    .chat-bubble-user {
-        background-color: #2b313e;
-        padding: 12px 16px;
-        border-radius: 15px;
-        margin: 8px 0;
-        color: white;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
+    button[kind="primary"]:hover,
+    div.stButton > button[kind="primary"]:hover,
+    div[data-testid="stFormSubmitButton"] > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #E8590C 0%, #FF6B35 100%) !important;
+        box-shadow: 0 6px 18px rgba(255, 107, 53, 0.42) !important;
+        transform: translateY(-1px) !important;
     }
-    .chat-bubble-ai {
-        background-color: #FF6B35;
-        padding: 12px 16px;
-        border-radius: 15px;
-        margin: 8px 0;
-        color: white;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
+
+    /* Secondary Buttons (Outlined / Neutral) */
+    button[kind="secondary"],
+    div.stButton > button[kind="secondary"],
+    div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {
+        background-color: transparent !important;
+        border: 1px solid rgba(128, 128, 128, 0.3) !important;
+        border-radius: 12px !important;
+        padding: 9px 18px !important;
+        font-weight: 500 !important;
+        color: inherit !important;
+        transition: all 0.2s ease-in-out !important;
     }
-    .file-chip {
-        background-color: #2b313e;
+    button[kind="secondary"]:hover,
+    div.stButton > button[kind="secondary"]:hover,
+    div[data-testid="stFormSubmitButton"] > button[kind="secondary"]:hover {
+        border-color: #FF6B35 !important;
+        color: #FF6B35 !important;
+        background-color: rgba(255, 107, 53, 0.08) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Header Banner */
+    .foxsay-header-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 22px;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, rgba(255, 107, 53, 0.1) 0%, rgba(255, 140, 66, 0.03) 100%);
+        border: 1px solid rgba(255, 107, 53, 0.22);
+        border-radius: 18px;
+    }
+    .foxsay-brand-box {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .foxsay-logo-badge {
+        font-size: 2.2rem;
+        background: rgba(255, 107, 53, 0.15);
+        border-radius: 16px;
         padding: 6px 12px;
-        border-radius: 10px;
-        display: inline-block;
-        margin-bottom: 8px;
-        font-size: 0.85em;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 107, 53, 0.3);
+    }
+    .foxsay-title-text {
+        font-size: 1.85rem;
+        font-weight: 800;
+        margin: 0;
+        background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        line-height: 1.2;
+    }
+    .foxsay-subtitle-text {
+        font-size: 0.92rem;
+        color: #777;
+        margin: 3px 0 0 0;
+    }
+
+    /* API Key Warning Card */
+    .foxsay-api-banner {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-radius: 14px;
+        padding: 12px 18px;
+        margin-bottom: 20px;
+        font-size: 0.9rem;
+    }
+
+    /* Active File Card */
+    .active-file-card {
+        background: linear-gradient(135deg, rgba(255, 107, 53, 0.06) 0%, rgba(255, 107, 53, 0.02) 100%);
+        border: 1px solid rgba(255, 107, 53, 0.25);
+        border-radius: 16px;
+        padding: 16px 20px;
+        margin-bottom: 18px;
+    }
+    .active-file-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 12px;
+    }
+    .active-file-icon {
+        font-size: 2rem;
+        background: rgba(255, 107, 53, 0.12);
+        padding: 6px 12px;
+        border-radius: 12px;
+    }
+    .active-file-title {
+        font-weight: 700;
+        font-size: 1.05rem;
+        word-break: break-all;
+    }
+    .active-file-meta {
+        font-size: 0.84rem;
+        color: #888;
+        margin-top: 2px;
+    }
+
+    /* Empty State Card */
+    .empty-state-card {
+        text-align: center;
+        padding: 38px 24px 28px;
+        background: linear-gradient(180deg, rgba(255, 107, 53, 0.05) 0%, transparent 100%);
+        border: 1px dashed rgba(255, 107, 53, 0.3);
+        border-radius: 20px;
+        margin: 12px 0 22px;
+    }
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 10px;
+    }
+
+    /* Chat Input Form Container */
+    .chat-input-wrapper {
+        background: rgba(128, 128, 128, 0.03);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        border-radius: 18px;
+        padding: 14px 18px;
+        margin-bottom: 22px;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+    }
+
+    /* Chat Messages Styling */
+    [data-testid="stChatMessage"] {
+        border-radius: 16px !important;
+        padding: 14px 18px !important;
+        margin-bottom: 12px !important;
+        border: 1px solid rgba(128, 128, 128, 0.16) !important;
+        background-color: rgba(128, 128, 128, 0.03) !important;
+    }
+    [data-testid="stChatMessage"]:hover {
+        box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04) !important;
+    }
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]),
+    [data-testid="stChatMessage"]:has([aria-label="Chat message from assistant"]) {
+        border-left: 4px solid #FF6B35 !important;
+        background: linear-gradient(180deg, rgba(255, 107, 53, 0.04) 0%, rgba(255, 107, 53, 0.01) 100%) !important;
+    }
+    [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]),
+    [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
+        background-color: rgba(255, 107, 53, 0.08) !important;
+        border: 1px solid rgba(255, 107, 53, 0.22) !important;
+    }
+
+    .chat-role-label {
+        font-size: 0.76rem;
+        font-weight: 700;
         color: #FF6B35;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 3px;
+    }
+
+    /* Voice Input Card */
+    .voice-card {
+        background: rgba(255, 107, 53, 0.05);
+        border: 1px solid rgba(255, 107, 53, 0.22);
+        border-radius: 14px;
+        padding: 14px 18px;
+        margin-bottom: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🦊 Foxsay")
-st.caption("AI agent yang bisa jawab pertanyaan, search internet, dan baca file")
+# Mode Descriptions
+MODE_INSTRUCTIONS = {
+    "Chill": "Jawab pertanyaan umum dengan gaya Foxsay yang santai, ekspresif, dan tetap informatif.",
+    "Study": "Bantu user belajar. Jelaskan konsep secara bertahap, gunakan contoh sederhana, dan jika diminta buat rangkuman, flashcard, atau kuis. Jangan langsung memberi jawaban tugas tanpa penjelasan.",
+    "Creator": "Bantu user membuat konten dengan cepat. Untuk ide atau script TikTok/Reels/Shorts, gunakan default yang masuk akal jika detail tidak disebutkan: TikTok, 30 detik, dan gaya santai. Selalu susun output dengan bagian: konsep, 3 hook, script per scene beserta estimasi waktu, arahan visual, voice-over, teks layar, caption, CTA, dan hashtag. Sesuaikan dengan detail yang diberikan user. Jangan mengarang fakta atau mengklaim tren terbaru tanpa sumber.",
+    "Career": "Bantu user mempersiapkan karier. Fokus pada CV, portfolio, interview, personal branding, dan strategi pencarian kerja. Berikan saran yang konkret dan bisa langsung dipakai.",
+}
 
+# Header Section
+col_header_left, col_header_right = st.columns([3.2, 1.8])
+with col_header_left:
+    st.markdown("""
+    <div class="foxsay-header-card">
+        <div class="foxsay-brand-box">
+            <span class="foxsay-logo-badge">🦊</span>
+            <div>
+                <h1 class="foxsay-title-text">Foxsay</h1>
+                <p class="foxsay-subtitle-text">AI Agent cerdas & asik — tanya apa saja, riset web, bedah dokumen, dan analisis data otomatis.</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_header_right:
+    mode_dipilih = st.selectbox(
+        "Mode Foxsay:",
+        options=list(MODE_INSTRUCTIONS.keys()),
+        index=0 if "mode_aktif" not in st.session_state else list(MODE_INSTRUCTIONS.keys()).index(st.session_state.mode_aktif),
+        key="mode_aktif_selector",
+        help="Pilih mode interaksi Foxsay sesuai kebutuhanmu"
+    )
+    st.session_state.mode_aktif = mode_dipilih
+    st.caption(f"💡 *{MODE_INSTRUCTIONS[mode_dipilih]}*")
+
+# API Key Validation
 try:
     api_key = st.secrets["GROQ_API_KEY"]
 except (KeyError, StreamlitSecretNotFoundError):
@@ -67,8 +268,17 @@ except (KeyError, StreamlitSecretNotFoundError):
 
 client = Groq(api_key=api_key) if api_key else None
 if client is None:
-    st.warning("GROQ_API_KEY belum dikonfigurasi. Chat AI dan voice input akan aktif setelah secret ditambahkan.")
+    st.markdown("""
+    <div class="foxsay-api-banner">
+        <span style="font-size: 1.3rem;">🔑</span>
+        <div>
+            <strong>GROQ_API_KEY belum terpasang.</strong><br>
+            Chat AI dan voice input memerlukan secret <code>GROQ_API_KEY</code> di <code>.streamlit/secrets.toml</code>. Fitur pembacaan dokumen dan visualisasi data tetap aktif.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
+# Session State Init
 if "history" not in st.session_state:
     st.session_state.history = []
 if "isi_file" not in st.session_state:
@@ -162,13 +372,6 @@ Kamu paham berbagai bahasa daerah Indonesia (Jawa, Sunda, Betawi, dll) kalau use
 menggunakannya dalam pertanyaan, tapi kamu tetap menjawab pakai Bahasa Indonesia gaya
 santai di atas, bukan ikut logat daerah."""
 
-MODE_INSTRUCTIONS = {
-    "Chill": "Jawab pertanyaan umum dengan gaya Foxsay yang santai, ekspresif, dan tetap informatif.",
-    "Study": "Bantu user belajar. Jelaskan konsep secara bertahap, gunakan contoh sederhana, dan jika diminta buat rangkuman, flashcard, atau kuis. Jangan langsung memberi jawaban tugas tanpa penjelasan.",
-    "Creator": "Bantu user membuat konten dengan cepat. Untuk ide atau script TikTok/Reels/Shorts, gunakan default yang masuk akal jika detail tidak disebutkan: TikTok, 30 detik, dan gaya santai. Selalu susun output dengan bagian: konsep, 3 hook, script per scene beserta estimasi waktu, arahan visual, voice-over, teks layar, caption, CTA, dan hashtag. Sesuaikan dengan detail yang diberikan user. Jangan mengarang fakta atau mengklaim tren terbaru tanpa sumber.",
-    "Career": "Bantu user mempersiapkan karier. Fokus pada CV, portfolio, interview, personal branding, dan strategi pencarian kerja. Berikan saran yang konkret dan bisa langsung dipakai.",
-}
-
 def baca_pdf(file):
     file.seek(0)
     reader = pypdf.PdfReader(file)
@@ -251,8 +454,6 @@ def buat_payload_audio(audio_value):
         extension = suffix if suffix in extension_to_mime else ".wav"
         mime = extension_to_mime[extension]
 
-    # Groq/OpenAI-compatible SDK mendokumentasikan tuple (filename, bytes).
-    # Ekstensi pada filename tetap mencerminkan MIME agar format dikenali API.
     return (f"voice{extension}", audio_value.getvalue())
 
 def cari_kolom_tanggal(df):
@@ -374,8 +575,6 @@ def buat_analisis_terstruktur(df):
             "Tentukan strategi untuk nilai hilang sebelum membuat model prediksi; jangan langsung menganggapnya acak."
         )
 
-    # Nilai negatif hanya ditandai sebagai anomali. Maknanya tetap harus dikonfirmasi
-    # berdasarkan definisi kolom, karena beberapa metrik seperti profit memang boleh negatif.
     anomali_negatif = []
     for kolom in numerik.columns:
         seri = pd.to_numeric(df[kolom], errors="coerce").dropna()
@@ -393,8 +592,6 @@ def buat_analisis_terstruktur(df):
             f"Validasi nilai negatif pada {kolom} sebelum analisis lanjutan; jangan menghapusnya tanpa aturan bisnis."
         )
 
-    # IQR digunakan untuk menemukan kandidat outlier, bukan untuk menyatakan bahwa
-    # nilai tersebut pasti salah.
     kandidat_outlier = []
     for kolom in numerik.columns:
         seri = pd.to_numeric(df[kolom], errors="coerce").dropna()
@@ -422,8 +619,6 @@ def buat_analisis_terstruktur(df):
             f"Periksa baris sumber pada {kolom} dan bandingkan dengan konteks bisnis sebelum melakukan imputasi atau penghapusan."
         )
 
-    # Cari perbedaan rata-rata antar kelompok kategorikal dengan jumlah sampel yang
-    # cukup agar rekomendasi tidak hanya berdasarkan pengamatan visual.
     perbandingan = []
     for kolom_kategori in kategori.columns:
         jumlah_unik = kategori[kolom_kategori].nunique(dropna=False)
@@ -953,68 +1148,61 @@ def jawab_pengguna(pertanyaan, konteks_file="", rate_limit_key="chat"):
         )
     return agent(pertanyaan, konteks_file, rate_limit_key=rate_limit_key)
 
-# Riwayat chat ditampilkan dulu (terbaru di atas nanti setelah input)
+def dapatkan_pesan_ditampilkan(history, max_count, urutan):
+    """Ambil riwayat pesan dengan logika grouping agar tidak terbalik saat dibaca."""
+    pesan_terpilih = history[-max_count:]
+    if urutan == "Kronologis (Lama ke Baru)":
+        return pesan_terpilih
+
+    # Untuk "Terbaru di atas", kelompokkan per percakapan (User -> AI)
+    # sehingga pertanyaan user selalu tampil di atas jawaban AI pasangannya.
+    exchanges = []
+    current_turn = []
+    for item in pesan_terpilih:
+        role, _ = item
+        if role == "user" and current_turn:
+            exchanges.append(current_turn)
+            current_turn = [item]
+        else:
+            current_turn.append(item)
+    if current_turn:
+        exchanges.append(current_turn)
+
+    hasil = []
+    for turn in reversed(exchanges):
+        hasil.extend(turn)
+    return hasil
+
+# ==================== FILE WORKSPACE SECTION ====================
 
 if st.session_state.nama_file:
-    nama_file_aman = escape(str(st.session_state.nama_file))
-    st.markdown(f'<span class="file-chip">📎 {nama_file_aman}</span>', unsafe_allow_html=True)
+    ext = st.session_state.nama_file.rsplit(".", 1)[-1].lower() if "." in st.session_state.nama_file else ""
+    icon_file = "📊" if ext in ["xlsx", "csv"] else ("📄" if ext == "pdf" else "📝")
+    info_baris = f" · {len(st.session_state.df_aktif):,} baris × {len(st.session_state.df_aktif.columns)} kolom" if st.session_state.df_aktif is not None else ""
 
-if st.session_state.file_read_warning:
-    st.warning(st.session_state.file_read_warning)
-if st.session_state.excel_sheet_info:
-    st.info(st.session_state.excel_sheet_info)
+    st.markdown(f"""
+    <div class="active-file-card">
+        <div class="active-file-header">
+            <span class="active-file-icon">{icon_file}</span>
+            <div style="flex-grow: 1;">
+                <div class="active-file-title">{escape(str(st.session_state.nama_file))}</div>
+                <div class="active-file-meta">Dokumen aktif{info_baris} · Siap dianalisis atau ditanyakan</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-if st.session_state.show_uploader:
-    uploaded_file = st.file_uploader("Upload PDF, Word, Excel, atau CSV", type=["pdf", "docx", "xlsx", "csv"], label_visibility="collapsed")
-    if uploaded_file is not None and uploaded_file.name != st.session_state.nama_file:
-        with st.spinner("🦊 Foxsay lagi baca file..."):
-            try:
-                st.session_state.df_aktif = None
-                st.session_state.file_read_warning = ""
-                st.session_state.excel_sheet_info = ""
-                if uploaded_file.name.endswith(".pdf"):
-                    isi = baca_pdf(uploaded_file)
-                    if not isi.strip():
-                        st.session_state.file_read_warning = (
-                            "PDF berhasil dibuka, tetapi tidak berisi teks yang bisa diekstrak. "
-                            "Kemungkinan PDF berupa scan/gambar; OCR belum tersedia."
-                        )
-                elif uploaded_file.name.endswith(".docx"):
-                    isi = baca_docx(uploaded_file)
-                elif uploaded_file.name.endswith(".xlsx"):
-                    nama_sheet = daftar_sheet_excel(uploaded_file)
-                    if len(nama_sheet) > 1:
-                        st.session_state.excel_sheet_info = (
-                            f"Excel memiliki {len(nama_sheet)} sheet ({', '.join(nama_sheet)}). "
-                            f"Foxsay saat ini membaca sheet pertama: {nama_sheet[0]}."
-                        )
-                    df = baca_excel(uploaded_file, sheet_name=0)
-                    st.session_state.df_aktif = df
-                    isi = df.to_string()
-                elif uploaded_file.name.endswith(".csv"):
-                    df = baca_csv(uploaded_file)
-                    st.session_state.df_aktif = df
-                    isi = df.to_string()
-                else:
-                    isi = ""
-                st.session_state.isi_file = isi
-                st.session_state.nama_file = uploaded_file.name
-                st.session_state.show_uploader = False
-                st.success(f"File '{uploaded_file.name}' berhasil dibaca!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Gagal baca file: {e}")
+    if st.session_state.file_read_warning:
+        st.warning(st.session_state.file_read_warning)
+    if st.session_state.excel_sheet_info:
+        st.info(st.session_state.excel_sheet_info)
 
-if st.session_state.df_aktif is not None:
-    st.dataframe(st.session_state.df_aktif, use_container_width=True)
-    tampilkan_analisis_grafik(st.session_state.df_aktif)
-
-if st.session_state.nama_file:
-    label_tombol = "Analisis data ini" if st.session_state.df_aktif is not None else "Rangkum file ini"
+    label_tombol = "📊 Analisis data ini" if st.session_state.df_aktif is not None else "📑 Rangkum isi file"
     pesan_default = "Tolong analisis data ini: kasih insight menarik, pattern, atau hal penting yang perlu diperhatikan." if st.session_state.df_aktif is not None else "Tolong rangkum isi file ini secara singkat dan jelas."
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button(label_tombol):
+
+    col_btn_analisis, col_btn_hapus = st.columns([3, 1])
+    with col_btn_analisis:
+        if st.button(label_tombol, type="primary", use_container_width=True, help="Minta Foxsay menganalisis atau merangkum file ini"):
             with st.spinner("🦊 Foxsay lagi mikir..."):
                 jawaban = agent(
                     pesan_default,
@@ -1024,8 +1212,9 @@ if st.session_state.nama_file:
             tambah_riwayat("user", f"[Minta rangkuman: {st.session_state.nama_file}]")
             tambah_riwayat("ai", jawaban)
             st.rerun()
-    with col_b:
-        if st.button("Hapus file"):
+
+    with col_btn_hapus:
+        if st.button("🗑️ Hapus file", type="secondary", use_container_width=True, help="Hapus file aktif dari sesi ini"):
             st.session_state.isi_file = ""
             st.session_state.nama_file = ""
             st.session_state.df_aktif = None
@@ -1033,27 +1222,113 @@ if st.session_state.nama_file:
             st.session_state.excel_sheet_info = ""
             st.rerun()
 
-st.write("Tanya apa aja ke Foxsay:")
-kotak_utama = st.container(border=True)
-with kotak_utama:
-    kolom_mode, kolom_info_mode = st.columns([1.5, 4.5])
-    with kolom_mode:
-        mode_aktif = st.selectbox("Mode Foxsay", list(MODE_INSTRUCTIONS.keys()), key="mode_aktif")
-    with kolom_info_mode:
-        st.caption("Chill adalah mode default. Pilih Study, Creator, atau Career sesuai kebutuhan.")
+    # Organized Expander for Dataframe & Visualizations
+    if st.session_state.df_aktif is not None:
+        with st.expander("📊 Pratinjau Tabel & Grafik Otomatis (Klik untuk Buka/Tutup)", expanded=False):
+            tab_tabel, tab_grafik = st.tabs(["📋 Pratinjau Tabel", "📈 Analisis Grafik & Statistik"])
+            with tab_tabel:
+                st.caption(f"Menampilkan dataset **{escape(str(st.session_state.nama_file))}** ({len(st.session_state.df_aktif):,} baris × {len(st.session_state.df_aktif.columns)} kolom)")
+                st.dataframe(st.session_state.df_aktif, use_container_width=True)
+            with tab_grafik:
+                tampilkan_analisis_grafik(st.session_state.df_aktif)
 
+# Uploader Section
+if st.session_state.show_uploader:
+    with st.container():
+        col_up_title, col_up_close = st.columns([5, 1])
+        with col_up_title:
+            st.markdown("**📁 Unggah Dokumen atau Dataset** *(PDF, DOCX, XLSX, atau CSV)*")
+        with col_up_close:
+            if st.button("✕ Tutup", type="secondary", key="close_uploader_btn", help="Tutup panel upload"):
+                st.session_state.show_uploader = False
+                st.rerun()
+
+        uploaded_file = st.file_uploader(
+            "Upload PDF, Word, Excel, atau CSV",
+            type=["pdf", "docx", "xlsx", "csv"],
+            label_visibility="collapsed"
+        )
+        if uploaded_file is not None and uploaded_file.name != st.session_state.nama_file:
+            with st.spinner("🦊 Foxsay lagi baca file..."):
+                try:
+                    st.session_state.df_aktif = None
+                    st.session_state.file_read_warning = ""
+                    st.session_state.excel_sheet_info = ""
+                    if uploaded_file.name.endswith(".pdf"):
+                        isi = baca_pdf(uploaded_file)
+                        if not isi.strip():
+                            st.session_state.file_read_warning = (
+                                "PDF berhasil dibuka, tetapi tidak berisi teks yang bisa diekstrak. "
+                                "Kemungkinan PDF berupa scan/gambar; OCR belum tersedia."
+                            )
+                    elif uploaded_file.name.endswith(".docx"):
+                        isi = baca_docx(uploaded_file)
+                    elif uploaded_file.name.endswith(".xlsx"):
+                        nama_sheet = daftar_sheet_excel(uploaded_file)
+                        if len(nama_sheet) > 1:
+                            st.session_state.excel_sheet_info = (
+                                f"Excel memiliki {len(nama_sheet)} sheet ({', '.join(nama_sheet)}). "
+                                f"Foxsay saat ini membaca sheet pertama: {nama_sheet[0]}."
+                            )
+                        df = baca_excel(uploaded_file, sheet_name=0)
+                        st.session_state.df_aktif = df
+                        isi = df.to_string()
+                    elif uploaded_file.name.endswith(".csv"):
+                        df = baca_csv(uploaded_file)
+                        st.session_state.df_aktif = df
+                        isi = df.to_string()
+                    else:
+                        isi = ""
+                    st.session_state.isi_file = isi
+                    st.session_state.nama_file = uploaded_file.name
+                    st.session_state.show_uploader = False
+                    st.success(f"File '{uploaded_file.name}' berhasil dibaca!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Gagal baca file: {e}")
+
+# ==================== CHAT INPUT COMMAND CENTER ====================
+
+with st.container():
     with st.form("tanya_form", clear_on_submit=True):
-        col_plus, col_mic, col_input, col_submit = st.columns([1, 1, 4, 1.3])
-        with col_plus:
-            attach_clicked = st.form_submit_button("➕")
+        col_attach, col_mic, col_input, col_submit = st.columns([1.1, 1.1, 5.8, 1.4])
+        with col_attach:
+            attach_clicked = st.form_submit_button(
+                "📎 File",
+                type="secondary",
+                help="Unggah dokumen PDF, DOCX, XLSX, atau CSV",
+                use_container_width=True
+            )
         with col_mic:
-            mic_clicked = st.form_submit_button("🎤")
+            mic_clicked = st.form_submit_button(
+                "🎙️ Suara",
+                type="secondary",
+                help="Buka perekam suara (Voice Input)",
+                use_container_width=True
+            )
         with col_input:
-            pertanyaan = st.text_input("Tanya apa aja ke Foxsay:", label_visibility="collapsed")
+            pertanyaan = st.text_input(
+                "Tanya apa aja ke Foxsay:",
+                placeholder="Ketik pesan atau pertanyaan untuk Foxsay... (Tekan Enter untuk kirim)",
+                label_visibility="collapsed"
+            )
         with col_submit:
-            submitted = st.form_submit_button("Tanya")
+            submitted = st.form_submit_button(
+                "Tanya 🚀",
+                type="primary",
+                help="Kirim pertanyaan ke Foxsay",
+                use_container_width=True
+            )
 
-    if st.session_state.show_mic:
+# Handle Voice Input Widget
+if st.session_state.show_mic:
+    with st.container():
+        st.markdown("""
+        <div class="voice-card">
+            <strong>🎙️ Perekam Pesan Suara (Voice Input)</strong>
+            <p style="margin: 4px 0 0; font-size: 0.85rem; opacity: 0.8;">Rekam pesan audio kamu, Whisper AI akan mentranskrip secara otomatis.</p>
+        </div>
+        """, unsafe_allow_html=True)
         audio_value = st.audio_input("Rekam pesan suara kamu", label_visibility="collapsed")
         if audio_value is not None and client is not None and not st.session_state.teks_transkrip:
             boleh, pesan_limit = cek_rate_limit("voice")
@@ -1075,9 +1350,9 @@ with kotak_utama:
 
         if st.session_state.teks_transkrip:
             st.info(f"📝 Hasil transkrip: \"{st.session_state.teks_transkrip}\"")
-            col_x, col_y = st.columns(2)
-            with col_x:
-                if st.button("Kirim ke Foxsay"):
+            col_send_vn, col_cancel_vn = st.columns(2)
+            with col_send_vn:
+                if st.button("Kirim ke Foxsay", type="primary", use_container_width=True):
                     pertanyaan_vn = st.session_state.teks_transkrip
                     st.session_state.teks_transkrip = ""
                     st.session_state.show_mic = False
@@ -1086,39 +1361,91 @@ with kotak_utama:
                     tambah_riwayat("user", f"🎤 {pertanyaan_vn}")
                     tambah_riwayat("ai", jawaban)
                     st.rerun()
-            with col_y:
-                if st.button("Batal"):
+            with col_cancel_vn:
+                if st.button("Batal", type="secondary", use_container_width=True):
                     st.session_state.teks_transkrip = ""
                     st.session_state.show_mic = False
                     st.rerun()
 
-if attach_clicked:
+# Dispatch form actions safely (preventing Enter-key false triggers)
+if attach_clicked and not pertanyaan:
     st.session_state.show_uploader = not st.session_state.show_uploader
     st.rerun()
-
-if mic_clicked:
+elif mic_clicked and not pertanyaan:
     st.session_state.show_mic = not st.session_state.show_mic
     st.rerun()
-
-if submitted and pertanyaan:
+elif (submitted or pertanyaan) and pertanyaan.strip():
     with st.spinner("🦊 Foxsay lagi mikir..."):
         jawaban = jawab_pengguna(pertanyaan, st.session_state.isi_file)
     tambah_riwayat("user", pertanyaan)
     tambah_riwayat("ai", jawaban)
+    st.rerun()
 
-if st.session_state.history:
-    kolom_riwayat, kolom_clear = st.columns([4, 1])
-    with kolom_riwayat:
+# ==================== CHAT HISTORY & EMPTY STATE ====================
+
+if not st.session_state.history:
+    st.markdown("""
+    <div class="empty-state-card">
+        <div class="empty-state-icon">🦊</div>
+        <h3 style="margin-bottom: 6px; font-weight: 700;">Belum ada percakapan</h3>
+        <p style="opacity: 0.8; margin-bottom: 18px; max-width: 600px; margin-left: auto; margin-right: auto;">
+            Mulai obrolan seru bareng Foxsay! Kamu bisa tanya materi belajar, minta ide konten kreatif, bedah CV, atau analisis data statistik.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<p style='font-size: 0.92rem; font-weight: 600; margin-bottom: 8px; color: #FF6B35;'>💡 Contoh pertanyaan cepat:</p>", unsafe_allow_html=True)
+    col_p1, col_p2, col_p3 = st.columns(3)
+    prompt_pilihan = None
+
+    with col_p1:
+        if st.button("📊 Analisis file saya", use_container_width=True, help="Minta Foxsay menganalisis file atau data aktif"):
+            if st.session_state.nama_file:
+                prompt_pilihan = "Tolong analisis file yang sudah saya upload: berikan ringkasan, insight penting, dan pola yang menarik."
+            else:
+                st.session_state.show_uploader = True
+                prompt_pilihan = "Format file apa saja yang bisa kamu analisis dan apa saja fitur analisis data yang tersedia di Foxsay?"
+
+    with col_p2:
+        if st.button("✨ Bantu buat caption", use_container_width=True, help="Buat ide konsep dan caption medsos"):
+            prompt_pilihan = "Bantu buatkan 3 ide konsep dan caption TikTok/Reels yang engaging lengkap dengan hook, visual direction, dan CTA."
+
+    with col_p3:
+        if st.button("💡 Jelaskan konsep ini", use_container_width=True, help="Jelaskan topik rumit dengan bahasa sederhana"):
+            prompt_pilihan = "Jelaskan konsep Machine Learning dan AI dengan analogi sederhana sehari-hari agar mudah dipahami pemula."
+
+    if prompt_pilihan:
+        with st.spinner("🦊 Foxsay lagi mikir..."):
+            jawaban = jawab_pengguna(prompt_pilihan, st.session_state.isi_file)
+        tambah_riwayat("user", prompt_pilihan)
+        tambah_riwayat("ai", jawaban)
+        st.rerun()
+
+else:
+    col_hist_title, col_hist_order, col_hist_clear = st.columns([4, 2, 1.3])
+    with col_hist_title:
         jumlah_tampil = min(len(st.session_state.history), MAX_HISTORY_RENDER)
-        st.caption(f"Riwayat chat — menampilkan {jumlah_tampil} pesan terbaru")
-    with kolom_clear:
-        if st.button("Hapus chat", key="clear_chat"):
+        st.markdown(f"**💬 Percakapan** · *Menampilkan {jumlah_tampil} pesan terbaru*")
+    with col_hist_order:
+        pilihan_urutan = st.selectbox(
+            "Urutan:",
+            ["Terbaru di atas", "Kronologis (Lama ke Baru)"],
+            label_visibility="collapsed",
+            key="urutan_chat"
+        )
+    with col_hist_clear:
+        if st.button("🗑️ Hapus chat", type="secondary", use_container_width=True, key="clear_chat", help="Hapus seluruh riwayat percakapan"):
             st.session_state.history.clear()
             st.rerun()
 
-for role, teks in reversed(st.session_state.history[-MAX_HISTORY_RENDER:]):
-    teks_aman = escape(str(teks))
-    if role == "user":
-        st.markdown(f'<div class="chat-bubble-user">🙋 {teks_aman}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="chat-bubble-ai">🦊 {teks_aman}</div>', unsafe_allow_html=True)
+    pesan_tampil = dapatkan_pesan_ditampilkan(st.session_state.history, MAX_HISTORY_RENDER, pilihan_urutan)
+
+    for role, teks in pesan_tampil:
+        if role == "user":
+            with st.chat_message("user", avatar="🙋"):
+                st.markdown('<div class="chat-role-label">Kamu</div>', unsafe_allow_html=True)
+                st.markdown(teks)
+        else:
+            with st.chat_message("assistant", avatar="🦊"):
+                st.markdown('<div class="chat-role-label">Foxsay</div>', unsafe_allow_html=True)
+                st.markdown(teks)
