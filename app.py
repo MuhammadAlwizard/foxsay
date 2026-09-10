@@ -1239,16 +1239,73 @@ def tampilkan_analisis_grafik(df):
         key="download_laporan_html",
     )
 
-def butuh_pencarian_web(pertanyaan):
-    """Cari hanya jika user memberi sinyal bahwa informasi terkini diperlukan."""
+def buat_konteks_percakapan(max_pesan=10):
+    """Ambil percakapan terakhir untuk memahami pertanyaan lanjutan."""
+    if not st.session_state.history:
+        return ""
+
+    potongan = []
+    for role, teks in st.session_state.history[-max_pesan:]:
+        nama_role = "USER" if role == "user" else "FOXSAY"
+        potongan.append(f"{nama_role}: {str(teks).strip()}")
+    return "\n".join(potongan)
+
+
+def pertanyaan_lanjutan(pertanyaan):
+    """Deteksi pertanyaan pendek yang kemungkinan meneruskan topik sebelumnya."""
     teks = " ".join(str(pertanyaan).lower().split())
+    penanda = (
+        "yang tadi", "itu", "saja", "doang", "juga", "kalau", "terus",
+        "lanjut", "dibandingkan", "bandingkan", "terbaru", "minggu ini",
+        "bulan ini", "tahun ini", "yang mana", "bagaimana dengan",
+    )
+    return len(teks.split()) <= 10 or any(item in teks for item in penanda)
+
+
+def buat_query_pencarian(pertanyaan, konteks_percakapan=""):
+    """Perjelas query search dengan topik dari percakapan terakhir."""
+    teks = " ".join(str(pertanyaan).lower().split())
+    if not konteks_percakapan or not pertanyaan_lanjutan(teks):
+        return str(pertanyaan).strip()
+
+    pesan_user = [
+        baris.split(":", 1)[1].strip()
+        for baris in konteks_percakapan.splitlines()
+        if baris.startswith("USER:")
+    ]
+    if not pesan_user:
+        return str(pertanyaan).strip()
+
+    pertanyaan_sebelumnya = pesan_user[-1]
+    return f"{pertanyaan_sebelumnya}; pertanyaan lanjutan: {str(pertanyaan).strip()}"
+
+
+def butuh_pencarian_web(pertanyaan, konteks_percakapan=""):
+    """Cari jika pertanyaan aktual atau lanjutan membutuhkan informasi terkini."""
+    teks = " ".join(str(pertanyaan).lower().split())
+    konteks_lower = str(konteks_percakapan).lower()
     sinyal_pencarian = (
         "cari", "search", "googling", "telusuri", "cek internet", "di internet",
         "berita", "terbaru", "terkini", "hari ini", "sekarang", "update",
         "real-time", "realtime", "live", "harga", "jadwal", "cuaca", "kurs",
-        "viral", "tren terbaru",
+        "viral", "tren", "skor", "saham", "bitcoin", "crypto", "market",
+        "presiden", "menteri", "pemilu", "pertandingan", "event",
     )
-    return any(sinyal in teks for sinyal in sinyal_pencarian)
+    if any(sinyal in teks for sinyal in sinyal_pencarian):
+        return True
+    if any(str(tahun) in teks for tahun in range(2025, 2031)):
+        return True
+    konteks_memuat_tahun_terkini = any(
+        str(tahun) in konteks_lower for tahun in range(2025, 2031)
+    )
+    return bool(
+        konteks_percakapan
+        and pertanyaan_lanjutan(teks)
+        and (
+            any(sinyal in konteks_lower for sinyal in sinyal_pencarian)
+            or konteks_memuat_tahun_terkini
+        )
+    )
 
 def cari_internet(query):
     boleh, pesan_limit = cek_rate_limit("web_search")
@@ -1259,10 +1316,14 @@ def cari_internet(query):
         hasil = DDGS().text(query, max_results=5)
         teks_hasil = ""
         for item in hasil:
-            teks_hasil += f"- {item['title']}: {item['body']}\n"
+            judul = item.get("title", "Tanpa judul")
+            ringkasan = item.get("body", "")
+            url = item.get("href") or item.get("url") or ""
+            sumber = f" [{url}]({url})" if url else ""
+            teks_hasil += f"- {judul}: {ringkasan}{sumber}\n"
         return teks_hasil if teks_hasil else "(tidak ada hasil pencarian)"
-    except Exception:
-        return "(pencarian gagal, jawab pakai pengetahuan umum saja)"
+    except Exception as error:
+        return f"(pencarian gagal: {type(error).__name__}. Jangan mengklaim jawaban sebagai informasi terkini.)"
 
 def is_perintah_wrapped(teks):
     """Kenali perintah rahasia tanpa membuatnya muncul sebagai tombol di UI."""
@@ -1297,6 +1358,7 @@ def agent(pertanyaan, konteks_file="", mode=None, special_mode=None, rate_limit_
 
     mode_aktif = mode or st.session_state.mode_aktif
     instruksi_mode = MODE_INSTRUCTIONS.get(mode_aktif, MODE_INSTRUCTIONS["Chill"])
+    konteks_percakapan = buat_konteks_percakapan()
 
     if special_mode == "wrapped":
         konteks_wrapped = buat_konteks_wrapped()
@@ -1339,12 +1401,29 @@ ATURAN ANALISIS DATA:
     elif konteks_file:
         sumber_info = f"""Isi file yang diupload user ({st.session_state.nama_file}):
 {konteks_file[:8000]}"""
-    elif butuh_pencarian_web(pertanyaan):
-        hasil_search = cari_internet(pertanyaan)
-        sumber_info = f"""Info dari internet (kalau ada):
-{hasil_search}"""
     else:
         sumber_info = "Tidak perlu pencarian web untuk pertanyaan ini. Jawab berdasarkan pengetahuan umum dan konteks yang tersedia."
+
+    if butuh_pencarian_web(pertanyaan, konteks_percakapan):
+        query_search = buat_query_pencarian(pertanyaan, konteks_percakapan)
+        hasil_search = cari_internet(query_search)
+        sumber_info += f"""
+
+Info dari internet untuk query `{query_search}` (gunakan sebagai sumber utama untuk informasi terkini):
+{hasil_search}
+"""
+
+    if konteks_percakapan:
+        konteks_instruksi = f"""
+
+KONTEKS PERCAKAPAN TERAKHIR:
+{konteks_percakapan}
+
+Gunakan konteks ini untuk memahami pertanyaan lanjutan. Pertanyaan terbaru tetap menjadi prioritas.
+Jangan membawa topik lama jika user jelas mengganti topik dan jangan mengarang detail yang tidak ada.
+"""
+    else:
+        konteks_instruksi = ""
 
     prompt = f"""{SYSTEM_STYLE}
 
@@ -1352,6 +1431,7 @@ MODE AKTIF: {mode_aktif}
 Instruksi mode: {instruksi_mode}
 
 {sumber_info}
+{konteks_instruksi}
 
     Pertanyaan: {pertanyaan}
 
